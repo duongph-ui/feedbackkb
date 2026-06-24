@@ -58,6 +58,10 @@ def create(body: CreateBody, request: Request,
         raise HTTPException(403, "captcha failed")
     try:
         with db.connect() as conn:
+            if s.open_register:
+                # trust-on-first-use: auto-create unknown system (internal nets only)
+                from ..repo import system as sysrepo
+                sysrepo.seed_system(conn, body.system, body.system)
             res = svc.create(
                 conn, system=body.system, message=body.message,
                 attachment_ids=body.attachment_ids, page_url=body.page_url,

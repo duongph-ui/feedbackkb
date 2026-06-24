@@ -60,6 +60,34 @@ def register_system(
     return RegisterResult(code=code, app_key=raw, app_key_prefix=appkey.display_prefix(raw))
 
 
+def seed_system(
+    conn: psycopg.Connection,
+    code: str,
+    name: str,
+    scopes: list[str] | None = None,
+) -> bool:
+    """Keyless idempotent upsert of a system row (env-seed / open-register).
+
+    No app_key is issued — this exists so a deployment running `auth=none` can
+    accept feedback for `code` WITHOUT an admin `register` call. Returns True if a
+    new row was created, False if it already existed. Safe to call repeatedly.
+    """
+    scopes = scopes or ["submit"]
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO fbk.system_registry (code, name, scopes)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (code) DO NOTHING
+            RETURNING code
+            """,
+            (code, name, json.dumps(scopes)),
+        )
+        created = cur.fetchone() is not None
+    conn.commit()
+    return created
+
+
 def rotate_key(conn: psycopg.Connection, code: str) -> RegisterResult:
     raw = appkey.generate()
     with conn.cursor() as cur:

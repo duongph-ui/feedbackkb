@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     # auth (Step 6)
     fpa_jwt_secret: str = ""
 
+    # zero-admin onboarding — let systems exist without an admin `register` call.
+    # seed_systems: "CODE:Name,CODE2:Name2" upserted at startup (ops sets it once).
+    # open_register: auto-create an unknown system on first feedback (trust-on-
+    # first-use; internal/trusted networks only — leave OFF on public-facing APIs).
+    seed_systems: str = ""
+    open_register: bool = False
+
     # storage (Step 7)
     signed_url_ttl: int = 300
     gcs_bucket: str = ""
@@ -53,6 +60,8 @@ _ALIASES = {
     "knowledge": "FEEDBACKKB_KNOWLEDGE",
     "scan": "FEEDBACKKB_SCAN",
     "captcha": "FEEDBACKKB_CAPTCHA",
+    "seed_systems": "FEEDBACKKB_SEED_SYSTEMS",
+    "open_register": "FEEDBACKKB_OPEN_REGISTER",
 }
 
 

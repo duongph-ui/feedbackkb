@@ -60,3 +60,19 @@ def test_rotate_invalidates_old_key():
     assert second.app_key != first.app_key
     assert new_hash != old_hash
     assert not appkey.verify(first.app_key, new_hash)
+
+
+# --- seed_system: keyless, idempotent (zero-admin onboarding) ---
+
+@needs_db
+def test_seed_system_is_keyless_and_idempotent():
+    from feedbackkb_server import db
+    db.apply_migrations()
+    with db.connect() as conn:
+        created_first = system.seed_system(conn, "T_SEED", "Seeded")
+        created_again = system.seed_system(conn, "T_SEED", "Seeded")
+        row = system.get_system(conn, "T_SEED")
+    assert created_first is True       # new row
+    assert created_again is False      # second call no-ops (idempotent)
+    assert row["app_key_hash"] is None  # keyless — no app_key issued
+    assert row["active"] is True
