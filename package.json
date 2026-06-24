@@ -1,0 +1,13 @@
+{
+  "name": "feedbackkb",
+  "version": "0.0.0",
+  "private": true,
+  "description": "FeedbackKB — feedback intake + bug-fix knowledge capture + agent team (OSS, self-host)",
+  "license": "MIT",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint"
+  },
+  "packageManager": "pnpm@10.33.3"
+}

@@ -1,0 +1,29 @@
+# secrets — NEVER commit (public OSS repo, §6.5)
+.env
+*.env
+!.env.example
+.credentials/
+*.key
+*.pem
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# node
+node_modules/
+.pnpm-store/
+packages/*/dist/
+
+# os/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

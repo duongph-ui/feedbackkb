@@ -1,0 +1,22 @@
+{
+  "name": "feedbackkb-mcp",
+  "version": "0.0.0",
+  "description": "FeedbackKB MCP server — feedback + knowledge tools over the REST API",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "feedbackkb-mcp": "dist/index.js" },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^2.1.0",
+    "@types/node": "^22.0.0"
+  }
+}
