@@ -54,6 +54,25 @@ async def _lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="FeedbackKB", version="0.0.0", lifespan=_lifespan)
+
+    # CORS: the widget POSTs from the consumer app's origin (different host), so the
+    # browser sends a preflight. Without this, every cross-origin submit is blocked.
+    # Read straight from env (like _seed_systems) so a no-DB import never forces
+    # DATABASE_URL validation via Settings.
+    import os
+
+    from fastapi.middleware.cors import CORSMiddleware
+
+    raw = os.environ.get("FEEDBACKKB_CORS_ORIGINS", "").strip()
+    origins = [o.strip() for o in raw.split(",") if o.strip()] if raw else ["*"]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials="*" not in origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     app.add_middleware(RequestIdMiddleware)
     app.add_middleware(MetricsMiddleware)
 

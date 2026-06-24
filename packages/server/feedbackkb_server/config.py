@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     seed_systems: str = ""
     open_register: bool = False
 
+    # CORS — origins allowed to call the API from a browser (the widget runs on the
+    # consumer app's origin, NOT this server's). Comma-separated; "*" allows any
+    # (fine for anonymous submit, tighten once auth=appkey origin-lock lands).
+    cors_origins: str = ""
+
     # storage (Step 7)
     signed_url_ttl: int = 300
     gcs_bucket: str = ""
@@ -68,6 +73,7 @@ _ALIASES = {
     "seed_systems": "FEEDBACKKB_SEED_SYSTEMS",
     "open_register": "FEEDBACKKB_OPEN_REGISTER",
     "embed": "FEEDBACKKB_EMBED",
+    "cors_origins": "FEEDBACKKB_CORS_ORIGINS",
 }
 
 
