@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     auth: Literal["none", "appkey", "jwt"] = "none"
     knowledge: Literal["pg", "sepo"] = "pg"
 
+    # semantic / AI (Phase 7, AP P5) — off-by-default; P1-P4 run on FTS+hash without these
+    embed: Literal["none", "openai", "local"] = "none"
+    embed_dim: int = 1536               # must match the embed adapter's model
+    fixability_min: float = 0.6         # orchestrator: score >= -> auto, < -> need_human
+
     # auth (Step 6)
     fpa_jwt_secret: str = ""
 
@@ -62,6 +67,7 @@ _ALIASES = {
     "captcha": "FEEDBACKKB_CAPTCHA",
     "seed_systems": "FEEDBACKKB_SEED_SYSTEMS",
     "open_register": "FEEDBACKKB_OPEN_REGISTER",
+    "embed": "FEEDBACKKB_EMBED",
 }
 
 

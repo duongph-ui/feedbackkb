@@ -12,7 +12,7 @@ from __future__ import annotations
 import psycopg
 
 from ..adapters import get_search
-from . import dedupe, feedback_service as fb, queue, triage
+from . import dedupe, embedding, feedback_service as fb, queue, triage
 
 
 def auto_triage(conn: psycopg.Connection, feedback_id: str) -> dict:
@@ -33,7 +33,16 @@ def auto_triage(conn: psycopg.Connection, feedback_id: str) -> dict:
         dedupe.mark_dup(conn, feedback_id, exact, actor_id="auto-triage", actor_type="system")
         return {"action": "dup", "dup_of": exact, "tier": "exact"}
 
-    # tier 2: near dup (FTS candidates ranked by search adapter)
+    # tier 2a: semantic dup (Phase 7) — compute+store embedding, pgvector NN.
+    # No-op when FEEDBACKKB_EMBED=none (embed returns None) -> falls through to FTS.
+    vec = embedding.embed_one(message or "")
+    dedupe.store_embedding(conn, feedback_id, vec)
+    sem = dedupe.semantic_dup(conn, system, vec, exclude_id=feedback_id)
+    if sem:
+        dedupe.mark_dup(conn, feedback_id, sem, actor_id="auto-triage", actor_type="system")
+        return {"action": "dup", "dup_of": sem, "tier": "semantic"}
+
+    # tier 2b: near dup (FTS candidates ranked by search adapter)
     cands = dedupe.near_candidates(conn, system, message, feedback_id)
     near = dedupe.best_near_match(get_search("keyword"), message, cands)
     if near:
@@ -46,7 +55,20 @@ def auto_triage(conn: psycopg.Connection, feedback_id: str) -> dict:
         conn, feedback_id, type_=g.type, name=g.name, severity=g.severity,
         actor_id="auto-triage", actor_type="system",
     )
-    return {"action": "triaged", "type": g.type, "name": g.name, "severity": g.severity}
+    # Phase 7 (Step 46): fixability gate -> auto-advance pipeline vs wait for human
+    from ..config import get_settings
+    from ..repo import knowledge as krepo
+    from . import fixability
+    has_lesson = krepo.find_ref_by_symptom(conn, system, sym) is not None
+    fscore = fixability.score(
+        lesson_match=has_lesson, grounding=has_lesson,
+        dedupe_clear=True, severity_known=g.severity is not None,
+    )
+    auto = fixability.is_auto(fscore, get_settings().fixability_min)
+    if auto:
+        queue.enqueue(conn, feedback_id, "analyze")  # advance to Analyst stage
+    return {"action": "triaged", "type": g.type, "name": g.name, "severity": g.severity,
+            "fixability": fscore, "auto_advance": auto}
 
 
 def run_once(conn: psycopg.Connection, agent: str = "conductor") -> dict | None:

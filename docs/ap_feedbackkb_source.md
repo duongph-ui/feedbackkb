@@ -1118,6 +1118,8 @@ flowchart LR
 > Mỗi process gói thành 1 skill chạy 1 luồng. **Onboard gộp 1 lần** (setup + nhúng widget).
 > **Intake mặc định = Widget → API trung tâm → Postgres đã tạo** (`fbk.*`); feedback của mọi
 > hệ thống đều lấy/ghi trên **cùng 1 DB trung tâm**. Dev không dựng DB, không chạm SQL, không cầm cred DB.
+>
+> **Setup = zero-technical-question (chốt):** mọi quyết định kỹ thuật lúc cài (schema, cleanup, pool, adapter, dedup…) ĐÃ quyết sẵn bằng **code default** (`.env.example` + hằng số trong code). Skill setup **KHÔNG hỏi người dùng câu kỹ thuật** (SQL/tên bảng/infra). Người dùng chỉ cần: **chạy setup + dùng đúng skill** (`/feedbackkb-onboard | knowledge | fix | ops`). Skill chỉ được hỏi **giá trị nghiệp vụ** người dùng mới biết (vd mã hệ thống), bằng **tiếng thường + kèm khuyến nghị 1 lựa chọn** — không bày option toàn thuật ngữ.
 
 | # | Skill | Nhịp | Việc | Công cụ |
 |---|---|---|---|---|
@@ -1142,6 +1144,7 @@ P3 chỉ con người giữ gate apply-prod; P4 cần role admin.
 | **P2 Triage** | `feedbackkb-mcp` + **Conductor** (giữ goal) + Triage agent (gộp collector) + dedupe (symptom_hash+FTS) + capture-fix skill + hook | A | P1 (MCP+auth có rồi) |
 | **P3 Fix loop** | **Analyst** (root cause + CL8 blast-radius) + Fixer (**sandbox §7.4**, CL9 grounding) + step knowledge-write + approval gate + CI | A | P2 |
 | **P4 Mở rộng** | OSS package public (npm + docker) + nhân ra FPA/HRMS + adapter (s3/pgvector/pg-knowledge) | A | P3 ổn định |
+| **P5 Nâng AI** (bù theo field 2025-26) | **Semantic dedup** (pgvector + embeddings) thay hash+FTS · **Fixability/confidence score** gate auto-escalate (như Sentry Seer) · theme quantification theo thời gian | A | P4 ổn định + có volume |
 
 → Output AP này dùng để tạo **ISP** (Incremental Step Plan) per phase. Pilot FPS bắt đầu P1.
 
@@ -1157,6 +1160,8 @@ P3 chỉ con người giữ gate apply-prod; P4 cần role admin.
 | 6 | Nơi lưu **nội dung** lesson | **Adapter cả 2** (interface `KnowledgeStore`) | Clevai = adapter `sepo` (wiki); self-host = adapter `pg` (bảng `knowledge_doc` trong feedback_kb). PG luôn giữ `knowledge_ref` index. Đóng §8 mâu thuẫn |
 | 7 | Phạm vi V1 | **Theo phase — intake+triage trước** | V1 = P0 nền + P1 intake + P2 triage/dashboard. Analyst/Fixer (§3.3) + OSS package (§6) lùi P3/P4 sau khi có volume thật. Giảm bề mặt rủi ro |
 | 8 | Auto-screenshot mặc định | **BẬT + denylist trang nhạy cảm + preview** | mặc định tự chụp (tiện user); admin config denylist (lương/token) + DOM-mask + preview-trước-gửi (§7.2). KHÔNG để OFF mặc định |
+| 9 | Quyết định kỹ thuật lúc setup | **Code default quyết hết — zero-tech-question** | Schema/cleanup/pool/adapter/dedup… mặc định trong code + `.env.example`; skill setup KHÔNG hỏi user câu kỹ thuật. User chỉ chạy setup + dùng skill. Hỏi chỉ khi cần giá trị nghiệp vụ (mã hệ thống), tiếng thường + khuyến nghị (sửa sau sự cố UX: session khác hỏi 'DROP SCHEMA?' toàn jargon) |
+| 10 | Dedup + auto-fix gating (bù theo research thế giới) | **Lộ trình P5: semantic dedup + fixability score** | Hiện P1–P4 dùng `symptom_hash`+FTS (đủ chạy); Enterpret/Unwrap/Seer đã sang embeddings + confidence score → nâng ở P5 (pgvector + score gate auto-escalate). Không chặn V1 |
 
 > Còn lại cần devops xác nhận khi dựng P0/P1: slot PG cluster (#3) + quyền ghi bucket FPA (#1). Không chặn thiết kế.
 

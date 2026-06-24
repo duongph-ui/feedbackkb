@@ -18,6 +18,7 @@ from ..adapters import Identity
 from ..config import get_settings
 from ..repo import knowledge as krepo
 from ..security.deps import require_scope
+from ..service import embedding
 from ..service import knowledge_write as kw
 
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
@@ -62,6 +63,13 @@ def search(query: str, system: str | None = None, limit: int = 10,
     # tenant-bound identity only searches its own system
     scope_system = ident.system or system
     with db.connect() as conn:
+        # semantic ranking when embeddings on; ILIKE fallback otherwise (Step 45)
+        if get_settings().embed != "none":
+            qvec = embedding.embed_one(query)
+            if qvec is not None:
+                return krepo.search_docs_semantic(
+                    conn, system=scope_system, query_vec=embedding.to_pgvector(qvec), limit=limit
+                )
         return krepo.search_refs(conn, system=scope_system, query=query, limit=limit)
 
 

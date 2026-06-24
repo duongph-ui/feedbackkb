@@ -66,13 +66,14 @@ def create_app() -> FastAPI:
         body, content_type = obs.render()
         return Response(content=body, media_type=content_type)
 
-    from .routes import admin, attachment, config, feedback, knowledge
+    from .routes import admin, attachment, config, feedback, knowledge, themes
 
     app.include_router(admin.router)
     app.include_router(attachment.router)
     app.include_router(feedback.router)
     app.include_router(config.router)
     app.include_router(knowledge.router)
+    app.include_router(themes.router)
     return app
 
 

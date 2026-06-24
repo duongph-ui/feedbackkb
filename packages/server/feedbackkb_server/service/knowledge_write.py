@@ -80,6 +80,11 @@ def write(
         store_ref = krepo.insert_doc(
             conn, system=lesson.system, slug=slugify(lesson.title), content=content
         )
+        # Phase 7: store embedding for semantic search (no-op when embeddings off)
+        from . import embedding
+        vec = embedding.embed_one(content)
+        if vec is not None:
+            krepo.set_doc_embedding(conn, store_ref, embedding.to_pgvector(vec))
     elif knowledge_adapter == "sepo":
         from ..adapters import Lesson as StoreLesson, get_knowledge
         store = get_knowledge("sepo")

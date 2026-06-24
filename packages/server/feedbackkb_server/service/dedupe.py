@@ -54,6 +54,47 @@ def best_near_match(search: SearchAdapter, message: str, candidates: list[dict])
     return None
 
 
+def _vec_literal(embedding: list[float]) -> str:
+    return "[" + ",".join(repr(float(x)) for x in embedding) + "]"
+
+
+def semantic_dup(conn: psycopg.Connection, system: str, embedding: list[float] | None,
+                 exclude_id: str, k: int = 10, max_distance: float = 0.15) -> str | None:
+    """Phase 7 (Step 44): nearest neighbour by pgvector cosine distance. dup if the
+    closest non-dup feedback in the same system is within max_distance (0.15 = cosine
+    similarity >= 0.85). Returns None when embeddings are off (embedding is None)."""
+    if embedding is None:
+        return None
+    vec = _vec_literal(embedding)
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, embedding <=> %s::vector AS dist
+              FROM fbk.feedback
+             WHERE system=%s AND id <> %s::uuid AND status <> 'dup' AND embedding IS NOT NULL
+             ORDER BY embedding <=> %s::vector
+             LIMIT %s
+            """,
+            (vec, system, exclude_id, vec, k),
+        )
+        rows = cur.fetchall()
+    for fid, dist in rows:
+        if dist is not None and float(dist) <= max_distance:
+            return str(fid)
+    return None
+
+
+def store_embedding(conn: psycopg.Connection, feedback_id: str, embedding: list[float] | None) -> None:
+    if embedding is None:
+        return
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE fbk.feedback SET embedding=%s::vector WHERE id=%s",
+            (_vec_literal(embedding), feedback_id),
+        )
+    conn.commit()
+
+
 def mark_dup(conn: psycopg.Connection, feedback_id: str, dup_of: str,
              *, actor_id: str = "triage", actor_type: str = "agent",
              request_id: str | None = None) -> None:
