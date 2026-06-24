@@ -84,8 +84,11 @@ CREATE INDEX attachment_expires_idx  ON fbk.feedback_attachment (expires_at);
 -- ---------- feedback_event (append-only audit) ----------
 CREATE TABLE fbk.feedback_event (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    -- SET NULL (not CASCADE): GDPR delete of feedback keeps the audit trail (§7.6)
-    feedback_id uuid REFERENCES fbk.feedback(id) ON DELETE SET NULL,
+    -- NO FK on purpose: this table is append-only (trigger blocks UPDATE/DELETE),
+    -- so a FK ON DELETE SET NULL/CASCADE would fire a blocked write when a
+    -- feedback is GDPR-deleted. Keeping feedback_id as a bare uuid lets the audit
+    -- trail survive the delete (dangling id is intentional, §7.6).
+    feedback_id uuid,
     actor_id    text,
     actor_type  text NOT NULL CHECK (actor_type IN ('agent','human','system')),
     action      text NOT NULL,
