@@ -81,7 +81,12 @@ def write(
             conn, system=lesson.system, slug=slugify(lesson.title), content=content
         )
     elif knowledge_adapter == "sepo":
-        raise NotImplementedError("sepo KnowledgeStore wired in Step 22 sepo adapter")
+        from ..adapters import Lesson as StoreLesson, get_knowledge
+        store = get_knowledge("sepo")
+        store_ref = store.put(StoreLesson(
+            system=lesson.system, title=lesson.title, content=content,
+            symptom_hash=sh, status=trust_for_source(source),
+        ))
     else:
         raise ValueError(f"unknown knowledge adapter {knowledge_adapter!r}")
 

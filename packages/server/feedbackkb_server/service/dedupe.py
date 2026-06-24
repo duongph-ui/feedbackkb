@@ -10,6 +10,7 @@ from __future__ import annotations
 import psycopg
 
 from ..adapters import SearchAdapter
+from . import audit
 
 NEAR_THRESHOLD = 0.6
 
@@ -53,10 +54,18 @@ def best_near_match(search: SearchAdapter, message: str, candidates: list[dict])
     return None
 
 
-def mark_dup(conn: psycopg.Connection, feedback_id: str, dup_of: str) -> None:
+def mark_dup(conn: psycopg.Connection, feedback_id: str, dup_of: str,
+             *, actor_id: str = "triage", actor_type: str = "agent",
+             request_id: str | None = None) -> None:
     with conn.cursor() as cur:
         cur.execute(
             "UPDATE fbk.feedback SET status='dup', dup_of=%s WHERE id=%s",
             (dup_of, feedback_id),
         )
     conn.commit()
+    # §7.6: a dup marking is a mutation -> it must leave an audit trail too
+    audit.log_event(
+        conn, feedback_id=feedback_id, actor_id=actor_id, actor_type=actor_type,
+        action="mark_dup", request_id=request_id,
+        new={"status": "dup", "dup_of": dup_of},
+    )

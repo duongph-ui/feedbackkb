@@ -84,6 +84,28 @@ def test_kw_dedupe_bumps_occurrence():
 
 
 @needs_db
+def test_knowledge_routes_capture_then_search():
+    # the REST surface the MCP tools call — capture a lesson, then find it
+    from fastapi.testclient import TestClient
+
+    from feedbackkb_server import db
+    from feedbackkb_server.app import create_app
+    from feedbackkb_server.repo import system
+    db.apply_migrations()
+    with db.connect() as conn:
+        system.register_system(conn, code="T_KR", name="t")
+    c = TestClient(create_app())
+    cap = c.post("/api/knowledge/capture", json={
+        "system": "T_KR", "symptom": "phieu trung so", "root_cause": "race on counter",
+        "fix": "lock row", "prevent": "FOR UPDATE", "files": "svc.py:10",
+    })
+    assert cap.status_code == 200 and cap.json()["action"] == "created"
+    found = c.get("/api/knowledge/search", params={"query": "trung", "system": "T_KR"})
+    assert found.status_code == 200
+    assert any("phieu trung so" in r["title"] for r in found.json())
+
+
+@needs_db
 def test_queue_claim_is_atomic():
     from feedbackkb_server import db
     from feedbackkb_server.repo import system

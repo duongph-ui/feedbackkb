@@ -63,6 +63,39 @@ def insert_ref(
     return ref_id
 
 
+def search_refs(conn: psycopg.Connection, *, system: str | None, query: str,
+                limit: int = 10) -> list[dict]:
+    """Keyword search over knowledge_ref + joined doc content (system-scoped if given).
+
+    Plain ILIKE on title + doc content — enough for the pg KnowledgeStore. The
+    pgvector/sepo adapters can override this later; the REST contract stays the same.
+    """
+    clauses = ["(r.title ILIKE %s OR d.content ILIKE %s)"]
+    like = f"%{query}%"
+    params: list = [like, like]
+    if system:
+        clauses.append("r.system = %s")
+        params.append(system)
+    where = " AND ".join(clauses)
+    params.append(min(limit, 50))
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT r.id, r.system, r.store_ref, r.title, r.status, r.occurrence,
+                   left(coalesce(d.content,''), 280) AS snippet
+              FROM fbk.knowledge_ref r
+              LEFT JOIN fbk.knowledge_doc d ON d.id::text = r.store_ref
+             WHERE {where}
+             ORDER BY r.occurrence DESC, r.created_at DESC
+             LIMIT %s
+            """,
+            params,
+        )
+        rows = cur.fetchall()
+    cols = ("id", "system", "store_ref", "title", "status", "occurrence", "snippet")
+    return [dict(zip(cols, r)) for r in rows]
+
+
 def bump_occurrence(conn: psycopg.Connection, ref_id: str) -> None:
     with conn.cursor() as cur:
         cur.execute(

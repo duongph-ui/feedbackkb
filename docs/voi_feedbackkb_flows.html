@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VOI FeedbackKB — Luồng chức năng × UX per persona</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true, theme:'neutral', securityLevel:'loose'});</script>
+<style>
+  :root{--ink:#1e293b;--mut:#64748b;--line:#e2e8f0;}
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--ink);
+       max-width:1180px;margin:0 auto;padding:28px 22px;line-height:1.5;background:#fff}
+  h1{font-size:26px;margin:0 0 4px}
+  h2{font-size:20px;margin:34px 0 10px;padding-bottom:6px;border-bottom:2px solid var(--line)}
+  h3{font-size:16px;margin:22px 0 8px;color:#0f172a}
+  .sub{color:var(--mut);font-size:14px;margin:0 0 18px}
+  .goal{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 16px;margin:14px 0}
+  .goal b{color:#1d4ed8}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin:10px 0}
+  th,td{border:1px solid #cbd5e1;padding:5px 7px;text-align:center;vertical-align:middle}
+  th{background:#f1f5f9;font-weight:600}
+  td.fn{text-align:left;font-weight:600;background:#f8fafc;white-space:nowrap}
+  .grp td{font-weight:700;text-align:left;color:#fff;font-size:13px}
+  .legend{font-size:12.5px;color:var(--mut);margin:8px 0 0}
+  .legend code{background:#f1f5f9;padding:1px 5px;border-radius:4px;color:var(--ink)}
+  .ux{background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:11px 14px;margin:10px 0}
+  .ux b{color:#b45309}
+  .ux ul{margin:6px 0 0;padding-left:20px}
+  .persona{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:16px 0;background:#fcfcfd}
+  .persona h3{margin-top:0}
+  .tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px;margin-left:8px;vertical-align:middle}
+  .human{background:#dbeafe;color:#1e40af}
+  .machine{background:#e0e7ff;color:#3730a3}
+  .mermaid{background:#fff;border:1px dashed #cbd5e1;border-radius:8px;padding:8px;margin:8px 0}
+  .dim th{background:#ecfeff}
+  small{color:var(--mut)}
+  /* lifecycle group colors (non-neon, dark text) */
+  .g-intake{background:#0ea5e9}.g-triage{background:#14b8a6}.g-analyze{background:#8b5cf6}
+  .g-fix{background:#f97316}.g-know{background:#10b981}.g-review{background:#6366f1}
+  .g-admin{background:#64748b}.g-integ{background:#0891b2}
+</style>
+</head>
+<body>
+
+<h1>VOI FeedbackKB — Luồng chức năng × UX theo persona</h1>
+<p class="sub">DrawVOI-Architect · nguồn: ArchitecturePack V1.4 + codebase (routes/agents/widget/mcp/cli) · 2026-06-24</p>
+
+<div class="goal">
+  <b>🎯 Goal (Bước 1.2)</b><br>
+  Bày toàn bộ tương tác của FeedbackKB lên 1 mặt phẳng: <b>persona × chức năng × stage vòng đời</b> —
+  để thấy đủ độ phủ, gap, và <b>điểm UX trọng yếu cho từng loại user</b>.
+  <ul style="margin:8px 0 0">
+    <li><b>Người dùng:</b> End-user (báo lỗi) · Triager · Admin/PO · Developer · Agent team (Conductor/Triage/Analyst/Fixer).</li>
+    <li><b>Nỗi đau:</b> (1) bug-fix knowledge rò rỉ khỏi prompt lẻ; (2) hệ thống internal không có kênh feedback có cấu trúc.</li>
+    <li><b>Mục tiêu:</b> 1 nơi vừa thu feedback (widget 1-ô) vừa tích lũy knowledge (capture-fix) → agent triage tự động + fix bán tự động, người chỉ duyệt việc quan trọng.</li>
+  </ul>
+</div>
+
+<!-- ===================== DIMENSIONS ===================== -->
+<h2>1 · Dimensions (Bước 2 — MECE)</h2>
+<table class="dim">
+<tr><th>Dimension</th><th>Nghĩa</th><th>Bộ giá trị</th></tr>
+<tr><td class="fn">Persona</td><td style="text-align:left">Vai trò tương tác</td>
+    <td style="text-align:left">End-user · Triager · Admin/PO · Developer · Conductor · Triage-agent · Analyst · Fixer</td></tr>
+<tr><td class="fn">Actor Type</td><td style="text-align:left">Người hay máy</td>
+    <td style="text-align:left">Human · Machine (agent) · System</td></tr>
+<tr><td class="fn">Function</td><td style="text-align:left">Chức năng/khả năng</td>
+    <td style="text-align:left">Intake · Triage · Analyze · Fix · Knowledge · Review · Admin · Integrate</td></tr>
+<tr><td class="fn">Lifecycle Stage</td><td style="text-align:left">Trạng thái feedback (status machine)</td>
+    <td style="text-align:left">new ▸ triaged ▸ needs_info ▸ in_progress ▸ resolved ▸ closed (+ wontfix)</td></tr>
+<tr><td class="fn">Surface</td><td style="text-align:left">Kênh tương tác</td>
+    <td style="text-align:left">Widget · Dashboard · REST API · MCP · CLI · Agent SDK · Stop-hook</td></tr>
+<tr><td class="fn">Interaction</td><td style="text-align:left">Kiểu chạm vào dữ liệu</td>
+    <td style="text-align:left">✍️ act/write · ✅ approve · 👁 read · ⚙️ auto · — none</td></tr>
+</table>
+
+<!-- ===================== VOI CROSS MATRIX ===================== -->
+<h2>2 · VOI Cross-Matrix — Function/Stage (dọc) × Persona (ngang)</h2>
+<p class="legend">Ô = vai trò tham gia: <code>✍️</code> thực hiện chính · <code>✅</code> duyệt (gate) ·
+<code>👁</code> xem · <code>⚙️</code> tự động · <code>—</code> không. Cột Human (xanh) | Machine/agent (tím).</p>
+<table>
+<tr>
+  <th rowspan="2">Function / Stage</th>
+  <th colspan="4" style="background:#dbeafe">Human</th>
+  <th colspan="4" style="background:#e0e7ff">Machine (agent team)</th>
+</tr>
+<tr>
+  <th style="background:#eff6ff">End-user</th><th style="background:#eff6ff">Triager</th>
+  <th style="background:#eff6ff">Admin/PO</th><th style="background:#eff6ff">Developer</th>
+  <th style="background:#eef2ff">Conductor</th><th style="background:#eef2ff">Triage</th>
+  <th style="background:#eef2ff">Analyst</th><th style="background:#eef2ff">Fixer</th>
+</tr>
+
+<tr class="grp"><td class="g-intake" colspan="9">▌ INTAKE — thu feedback (new)</td></tr>
+<tr><td class="fn">Submit feedback (form 1-ô)</td><td>✍️</td><td>—</td><td>—</td><td>✍️<small> MCP/API</small></td><td>👁</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td class="fn">Auto-screenshot + annotate (khoanh/blur/bỏ)</td><td>✍️</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td class="fn">Paste/attach ảnh</td><td>✍️</td><td>—</td><td>—</td><td>✍️</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+
+<tr class="grp"><td class="g-triage" colspan="9">▌ TRIAGE — phân loại (new ▸ triaged ▸ needs_info)</td></tr>
+<tr><td class="fn">Classify type/name/severity</td><td>—</td><td>👁<small> override</small></td><td>—</td><td>—</td><td>⚙️</td><td>⚙️✍️</td><td>—</td><td>—</td></tr>
+<tr><td class="fn">Dedupe (symptom_hash + search)</td><td>—</td><td>👁</td><td>—</td><td>—</td><td>⚙️</td><td>⚙️✍️</td><td>—</td><td>—</td></tr>
+<tr><td class="fn">NeedInfo — hỏi lại / bổ sung</td><td>✍️<small> bổ sung</small></td><td>✅</td><td>—</td><td>—</td><td>⚙️</td><td>⚙️</td><td>—</td><td>—</td></tr>
+
+<tr class="grp"><td class="g-analyze" colspan="9">▌ ANALYZE — tìm nguyên nhân</td></tr>
+<tr><td class="fn">Root-cause analysis</td><td>—</td><td>👁</td><td>—</td><td>—</td><td>👁</td><td>—</td><td>⚙️✍️</td><td>—</td></tr>
+<tr><td class="fn">Ground in knowledge (search lesson cũ)</td><td>—</td><td>—</td><td>—</td><td>✍️<small> search_knowledge</small></td><td>⚙️</td><td>⚙️</td><td>⚙️✍️</td><td>—</td></tr>
+
+<tr class="grp"><td class="g-fix" colspan="9">▌ FIX — đề xuất & duyệt (in_progress / wontfix)</td></tr>
+<tr><td class="fn">Propose fix (draft PR + lesson)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>👁</td><td>—</td><td>👁</td><td>⚙️✍️</td></tr>
+<tr><td class="fn">⛔ Approval gate (apply prod — irreversible)</td><td>—</td><td>—</td><td>✅<small> bắt buộc</small></td><td>✅<small> co</small></td><td>—</td><td>—</td><td>—</td><td>⏸ chờ</td></tr>
+<tr><td class="fn">Apply / tạo PR sau duyệt</td><td>—</td><td>—</td><td>✅</td><td>👁</td><td>—</td><td>—</td><td>—</td><td>✍️</td></tr>
+
+<tr class="grp"><td class="g-know" colspan="9">▌ KNOWLEDGE — tích lũy & tái dùng (giải nỗi đau #1)</td></tr>
+<tr><td class="fn">Capture lesson (5 mục + symptom_hash)</td><td>—</td><td>—</td><td>—</td><td>✍️<small> /capture-fix</small></td><td>—</td><td>—</td><td>—</td><td>⚙️ draft</td></tr>
+<tr><td class="fn">Auto-capture cuối session (Stop-hook)</td><td>—</td><td>—</td><td>—</td><td>✍️<small> setup</small></td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td class="fn">Search/reuse knowledge trong IDE</td><td>—</td><td>—</td><td>—</td><td>✍️</td><td>⚙️</td><td>⚙️</td><td>⚙️</td><td>⚙️</td></tr>
+<tr><td class="fn">Curate draft ▸ trusted</td><td>—</td><td>—</td><td>✍️✅</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+
+<tr class="grp"><td class="g-review" colspan="9">▌ REVIEW — dashboard (resolved ▸ closed)</td></tr>
+<tr><td class="fn">List + filter feedback (tenant-scoped)</td><td>—</td><td>✍️</td><td>👁</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td class="fn">Detail + events + agent_tasks</td><td>—</td><td>✍️👁</td><td>👁</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td class="fn">Status transition (guarded)</td><td>—</td><td>✍️<small> triager+</small></td><td>✍️</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+
+<tr class="grp"><td class="g-admin" colspan="9">▌ ADMIN — quản trị</td></tr>
+<tr><td class="fn">Register / rotate app_key</td><td>—</td><td>—</td><td>✍️</td><td>✍️<small> CLI</small></td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td class="fn">GDPR export / delete / erase</td><td>—</td><td>—</td><td>✍️</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td class="fn">Config (privacy / retention / open-register)</td><td>—</td><td>—</td><td>✍️</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+
+<tr class="grp"><td class="g-integ" colspan="9">▌ INTEGRATE — nhúng & I/O (2 cổng, không chạm SQL)</td></tr>
+<tr><td class="fn">Mount widget (npm/CDN)</td><td>👁<small> dùng</small></td><td>—</td><td>—</td><td>✍️</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td class="fn">REST forward / batch sync (idempotent)</td><td>—</td><td>—</td><td>—</td><td>✍️</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td class="fn">MCP tools (search/submit/capture)</td><td>—</td><td>—</td><td>—</td><td>✍️</td><td>⚙️</td><td>⚙️</td><td>⚙️</td><td>⚙️</td></tr>
+<tr><td class="fn">CLI (register/init-mcp/init-hook/sync)</td><td>—</td><td>—</td><td>✍️</td><td>✍️</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+</table>
+<p class="legend"><b>Đọc nhanh độ phủ:</b> End-user dồn ở INTAKE (cố tình — UX 1 chạm); Agent team gánh TRIAGE→ANALYZE→FIX (⚙️);
+Human chỉ giữ <b>2 gate</b>: Triager (REVIEW/transition) + Admin (⛔ apply-prod, GDPR); Developer là trục KNOWLEDGE + INTEGRATE.</p>
+
+<!-- ===================== FLOWS PER PERSONA ===================== -->
+<h2>3 · Flow per persona + UX trọng yếu</h2>
+
+<div class="persona">
+<h3>👤 End-user <span class="tag human">Human</span> — báo lỗi (UF1)</h3>
+<div class="mermaid">
+sequenceDiagram
+  actor U as End-user
+  participant W as Widget
+  participant API as Feedback API
+  participant DB as Postgres (fbk)
+  U->>W: bấm nút "Phản hồi"
+  W->>W: html2canvas chụp NGAY (trước khi mở panel) → đính sẵn
+  U->>W: nhập 1 ô nội dung (tuỳ chọn khoanh đỏ / blur / dán ảnh)
+  W->>API: POST /api/feedback (JWT | X-App-Key | none)
+  API->>DB: INSERT fbk.feedback status=new + enqueue triage
+  API-->>U: "Đã ghi nhận. Cảm ơn!"
+</div>
+<div class="ux"><b>UX trọng yếu</b>
+<ul>
+  <li><b>Zero-choice:</b> chỉ 1 ô <code>message*</code>. Không chọn type / đặt tiêu đề / 3 link — Triage agent tự suy.</li>
+  <li><b>Auto-screenshot, local-only:</b> mở form là đã chụp + đính sẵn, ảnh KHÔNG upload tới khi bấm Gửi (privacy).</li>
+  <li><b>Annotate nhẹ:</b> khoanh đỏ / mũi tên / <b>blur</b> (làm phẳng cứng) cho dữ liệu nhạy cảm; hoặc Bỏ ảnh.</li>
+  <li><b>Phản hồi tức thì:</b> 200 + cảm ơn ngay; mọi xử lý nặng async (không bắt user chờ).</li>
+</ul></div>
+</div>
+
+<div class="persona">
+<h3>🧑‍💻 Developer <span class="tag human">Human</span> — tự phục vụ knowledge (UF2 + §3.4.3)</h3>
+<div class="mermaid">
+sequenceDiagram
+  actor D as Dev (Claude Code)
+  participant M as feedbackkb-mcp
+  participant WK as wiki (sepo)
+  D->>M: search_knowledge("lỗi X")
+  M-->>D: 2 lesson cũ (kèm cách fix)
+  Note over D: tái dùng fix cũ, KHÔNG prompt lại từ đầu
+  D->>D: fix code
+  D->>M: capture_lesson(symptom, root_cause, fix, files, prevent)
+  M->>WK: put_doc → KB/system/cat/slug
+  WK-->>D: wiki_path (knowledge tích lũy)
+</div>
+<div class="ux"><b>UX trọng yếu</b>
+<ul>
+  <li><b>Trong IDE, không rời flow:</b> tra + ghi knowledge ngay trong Claude Code — mấu chốt giải nỗi đau #1.</li>
+  <li><b>Setup 1 lệnh:</b> <code>npx feedbackkb register / init-mcp / init-hook</code> — không cấu hình tay, không chạm schema PG.</li>
+  <li><b>Tự động hoá:</b> Stop-hook rút lesson cuối session (lọc nhiễu: chỉ khi có dấu hiệu fix bug thật).</li>
+  <li><b>2 cổng I/O:</b> REST + MCP — không bao giờ viết SQL.</li>
+</ul></div>
+</div>
+
+<div class="persona">
+<h3>🗂️ Triager <span class="tag human">Human</span> — dashboard review</h3>
+<div class="mermaid">
+sequenceDiagram
+  actor T as Triager
+  participant DASH as Dashboard
+  participant API as Feedback API
+  T->>DASH: lọc theo system/status
+  DASH->>API: GET /api/feedback?system=&status= (tenant-scoped)
+  T->>DASH: click hàng → chi tiết + events + agent_tasks
+  alt thiếu thông tin
+    T->>API: PATCH status=needs_info
+  else hợp lệ
+    T->>API: PATCH status=triaged/resolved (guarded transition)
+  end
+  API->>API: status-machine guard + ghi feedback_event(actor=human)
+</div>
+<div class="ux"><b>UX trọng yếu</b>
+<ul>
+  <li><b>Danh sách đã có tiêu đề:</b> Triage agent rút <code>name</code> từ message → dễ scan, không phải mở từng cái.</li>
+  <li><b>Tenant-scoped tự động:</b> chỉ thấy feedback của system mình (không cross-tenant).</li>
+  <li><b>Transition có rào:</b> chỉ cho đổi status hợp lệ; bug nặng resolved bắt buộc có lesson (CL2).</li>
+  <li><b>Audit minh bạch:</b> mọi đổi trạng thái ghi append-only, xem được lịch sử ai làm gì.</li>
+</ul></div>
+</div>
+
+<div class="persona">
+<h3>🛡️ Admin/PO <span class="tag human">Human</span> — gate quyết định (UF3) + quản trị</h3>
+<div class="mermaid">
+sequenceDiagram
+  participant F as Fixer agent
+  participant DB as Postgres
+  actor A as Admin/PO
+  participant PR as Repo PR
+  F->>DB: agent_task(stage=fix, decision_needed=true)
+  F->>A: "Apply fix [X] lên prod? severity=high"
+  alt approve
+    A->>F: yes → ghi feedback_event(actor=human, action=approve)
+    F->>PR: tạo PR draft
+    F->>DB: status=in_progress
+  else reject
+    A->>F: no / chỉnh hướng
+    F->>DB: status=wontfix | re-investigate
+  end
+</div>
+<div class="ux"><b>UX trọng yếu</b>
+<ul>
+  <li><b>Chỉ duyệt việc irreversible:</b> apply prod / merge PR / xoá lesson — agent KHÔNG tự làm kể cả severity=crit.</li>
+  <li><b>Quyết định 1 click:</b> approve/reject ngay tại câu hỏi, có đủ ngữ cảnh (fix đề xuất + severity).</li>
+  <li><b>Quản trị gọn:</b> register/rotate key, GDPR export/delete/erase, config privacy/retention — qua admin route.</li>
+  <li><b>Onboard không cấp gì:</b> seed env / open-register cho consumer chạy mà không phải cấp key thủ công.</li>
+</ul></div>
+</div>
+
+<div class="persona">
+<h3>🤖 Agent team <span class="tag machine">Machine</span> — Conductor điều phối (§3.3)</h3>
+<div class="mermaid">
+flowchart LR
+  Q[(hàng đợi: feedback new)] --> CO{Conductor}
+  CO -->|stage=triage| TR[Triage: classify + dedupe]
+  TR -->|need info| NI[needs_info → hỏi user]
+  TR -->|hợp lệ| AN[Analyst: root-cause + ground knowledge]
+  AN --> FX[Fixer: propose fix + draft lesson]
+  FX -->|decision_needed=true| GATE{{⛔ Human gate}}
+  GATE -->|approve| AP[apply / PR · status=in_progress]
+  GATE -->|reject| WF[wontfix / re-investigate]
+</div>
+<div class="ux"><b>UX/Design trọng yếu (cho AI consumer)</b>
+<ul>
+  <li><b>Least-privilege:</b> mỗi agent là subagent <code>.claude/agents/fbk-*.md</code> với tool tối thiểu cho stage của nó.</li>
+  <li><b>Untrusted boundary:</b> feedback/ảnh OCR/repo ngoài bọc delimiter — KHÔNG để "ra lệnh" cho agent (chống prompt-injection).</li>
+  <li><b>Queue an toàn:</b> claim task bằng <code>FOR UPDATE SKIP LOCKED</code> + idempotency_key → không double-process.</li>
+  <li><b>Hard stop:</b> Fixer luôn dừng ở gate; con người là người duy nhất chạm prod.</li>
+</ul></div>
+</div>
+
+<h2>4 · Tổng hợp — 1 dòng mỗi persona</h2>
+<table>
+<tr><th>Persona</th><th>Vào hệ ở đâu</th><th>Làm chính</th><th>UX cốt lõi</th></tr>
+<tr><td class="fn">End-user</td><td>Widget</td><td>Báo lỗi</td><td>1 ô + auto-screenshot local-only, zero-choice</td></tr>
+<tr><td class="fn">Developer</td><td>MCP / CLI / IDE</td><td>Tra & ghi knowledge, tích hợp</td><td>Trong IDE, setup 1 lệnh, không SQL</td></tr>
+<tr><td class="fn">Triager</td><td>Dashboard</td><td>Duyệt + transition</td><td>List có tiêu đề, tenant-scoped, transition có rào</td></tr>
+<tr><td class="fn">Admin/PO</td><td>Admin route / gate</td><td>Duyệt fix prod + quản trị</td><td>Chỉ chạm việc irreversible, quyết 1 click</td></tr>
+<tr><td class="fn">Agent team</td><td>Queue (async)</td><td>Triage→Analyze→Fix tự động</td><td>Least-privilege, untrusted-wrapped, hard-stop ở gate</td></tr>
+</table>
+
+<p style="margin-top:24px"><small>VOI FeedbackKB · DrawVOI-Architect v4.0.3 (adapt: output HTML, gsheet MCP không kết nối) ·
+nguồn AP V1.4 + codebase · không chứa secret.</small></p>
+
+</body>
+</html>

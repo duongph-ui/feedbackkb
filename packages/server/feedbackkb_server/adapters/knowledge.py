@@ -13,6 +13,10 @@ the `sepo` adapter arrive in Step 22.
 from __future__ import annotations
 
 import abc
+import json
+import os
+import urllib.parse
+import urllib.request
 import uuid
 from dataclasses import dataclass
 
@@ -61,3 +65,55 @@ class InMemoryKnowledgeStore(KnowledgeStore):
             if ql in doc.title.lower() or ql in doc.content.lower():
                 out.append({"store_ref": ref, "title": doc.title, "system": doc.system})
         return out
+
+
+class SepoKnowledgeStore(KnowledgeStore):
+    """`sepo` adapter — lesson CONTENT lives in the SEPO wiki, reached over HTTP.
+
+    Config via env (server-side only): SEPO_WIKI_URL (required), SEPO_TOKEN
+    (optional bearer). `put` returns the wiki_path used as store_ref; PG still
+    keeps the knowledge_ref index. Unconfigured use raises a clear error instead
+    of the old bare NotImplementedError.
+    """
+
+    def __init__(self) -> None:
+        self.base = os.environ.get("SEPO_WIKI_URL", "").rstrip("/")
+        self.token = os.environ.get("SEPO_TOKEN", "")
+
+    def _req(self, method: str, path: str, body: dict | None = None) -> dict:
+        if not self.base:
+            raise RuntimeError("sepo KnowledgeStore needs SEPO_WIKI_URL env")
+        data = json.dumps(body).encode() if body is not None else None
+        headers = {"Content-Type": "application/json"}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        req = urllib.request.Request(self.base + path, data=data, method=method, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as r:  # noqa: S310 (configured base URL)
+            return json.loads(r.read().decode() or "{}")
+
+    def put(self, lesson: Lesson) -> str:
+        res = self._req("POST", "/wiki", {
+            "system": lesson.system, "title": lesson.title, "content": lesson.content,
+            "status": lesson.status, "symptom_hash": lesson.symptom_hash,
+        })
+        return res.get("wiki_path") or res.get("path") or res.get("store_ref", "")
+
+    def get(self, store_ref: str) -> Lesson | None:
+        try:
+            res = self._req("GET", "/wiki?" + urllib.parse.urlencode({"path": store_ref}))
+        except Exception:
+            return None
+        if not res:
+            return None
+        return Lesson(system=res.get("system", ""), title=res.get("title", ""),
+                      content=res.get("content", ""), status=res.get("status", "draft"))
+
+    def search(self, query: str, system: str | None = None) -> list[dict]:
+        q = {"query": query}
+        if system:
+            q["system"] = system
+        try:
+            res = self._req("GET", "/wiki/search?" + urllib.parse.urlencode(q))
+        except Exception:
+            return []
+        return res.get("results", []) if isinstance(res, dict) else (res or [])

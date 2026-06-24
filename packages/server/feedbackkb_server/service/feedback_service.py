@@ -125,6 +125,74 @@ def create(
     return CreateResult(id=fid, status="new", has_secret=has_secret)
 
 
+def apply_triage(
+    conn: psycopg.Connection,
+    feedback_id: str,
+    *,
+    type_: str | None = None,
+    name: str | None = None,
+    severity: str | None = None,
+    dup_of: str | None = None,
+    actor_id: str = "triage",
+    actor_type: str = "agent",
+    request_id: str | None = None,
+) -> None:
+    """Triage write (Step 26): set type/name/severity/dup_of + status + audit.
+
+    The PATCH route only moves status/severity; this is the channel the Triage
+    agent (or the auto-triage runtime) uses to set the fields it derives. Marking
+    a duplicate routes status to 'dup'; otherwise 'triaged'.
+    """
+    sets, params = [], []
+    for col, val in (("type", type_), ("name", name), ("severity", severity), ("dup_of", dup_of)):
+        if val is not None:
+            sets.append(f"{col}=%s")
+            params.append(val)
+    if not sets:
+        raise FeedbackError(422, "nothing to triage")
+    new_status = "dup" if dup_of else "triaged"
+    sets.append("status=%s")
+    params.append(new_status)
+    params.append(feedback_id)
+    with conn.cursor() as cur:
+        cur.execute(f"UPDATE fbk.feedback SET {', '.join(sets)} WHERE id=%s", params)
+        if cur.rowcount == 0:
+            raise FeedbackError(404, "feedback not found")
+    conn.commit()
+    audit.log_event(
+        conn, feedback_id=feedback_id, actor_id=actor_id, actor_type=actor_type,
+        action="triage", request_id=request_id,
+        new={"type": type_, "name": name, "severity": severity,
+             "dup_of": dup_of, "status": new_status},
+    )
+
+
+def set_severity(
+    conn: psycopg.Connection,
+    feedback_id: str,
+    severity: str,
+    *,
+    actor_id: str = "human",
+    actor_type: str = "human",
+    request_id: str | None = None,
+) -> None:
+    """Severity-only change WITH audit (§7.6) — the PATCH route used to UPDATE
+    severity straight, leaving no feedback_event behind."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT severity FROM fbk.feedback WHERE id=%s", (feedback_id,))
+        row = cur.fetchone()
+        if row is None:
+            raise FeedbackError(404, "feedback not found")
+        old = row[0]
+        cur.execute("UPDATE fbk.feedback SET severity=%s WHERE id=%s", (severity, feedback_id))
+    conn.commit()
+    audit.log_event(
+        conn, feedback_id=feedback_id, actor_id=actor_id, actor_type=actor_type,
+        action="severity_change", request_id=request_id,
+        old={"severity": old}, new={"severity": severity},
+    )
+
+
 def query(
     conn: psycopg.Connection,
     *,

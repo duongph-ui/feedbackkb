@@ -31,5 +31,5 @@ lesson exists, bump its `occurrence` instead of creating a new one.
 
 ## Why
 This is the active half of knowledge capture; the Stop-hook
-(`agents/hooks/capture-lesson.sh`) is the passive half that catches the fixes you
+(`.claude/agents/hooks/capture-lesson.sh`) is the passive half that catches the fixes you
 forget to record.

@@ -14,14 +14,14 @@ from __future__ import annotations
 from typing import Callable
 
 from .auth import AppKeyAuth, AuthAdapter, AuthError, Identity, JwtAuth, NoneAuth
-from .knowledge import InMemoryKnowledgeStore, KnowledgeStore, Lesson
+from .knowledge import InMemoryKnowledgeStore, KnowledgeStore, Lesson, SepoKnowledgeStore
 from .search import KeywordSearch, PgVectorSearch, SearchAdapter
 from .storage import GcsStorage, LocalStorage, S3Storage, StorageAdapter
 
 _STORAGE = {"local": LocalStorage, "gcs": GcsStorage, "s3": S3Storage}
 _SEARCH = {"keyword": KeywordSearch, "pgvector": PgVectorSearch}
 _AUTH = {"none", "jwt", "appkey"}
-_KNOWLEDGE = {"pg": InMemoryKnowledgeStore}
+_KNOWLEDGE = {"pg": InMemoryKnowledgeStore, "sepo": SepoKnowledgeStore}
 
 
 def _pick(registry: dict, name: str, concern: str):
@@ -66,6 +66,6 @@ __all__ = [
     "AuthAdapter", "AuthError", "Identity", "NoneAuth", "JwtAuth", "AppKeyAuth",
     "SearchAdapter", "KeywordSearch", "PgVectorSearch",
     "StorageAdapter", "LocalStorage", "GcsStorage", "S3Storage",
-    "KnowledgeStore", "InMemoryKnowledgeStore", "Lesson",
+    "KnowledgeStore", "InMemoryKnowledgeStore", "SepoKnowledgeStore", "Lesson",
     "get_storage", "get_search", "get_auth", "get_knowledge",
 ]

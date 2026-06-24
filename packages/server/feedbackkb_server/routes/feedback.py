@@ -41,6 +41,13 @@ class PatchBody(BaseModel):
     comment: str | None = None
 
 
+class TriageBody(BaseModel):
+    type: str | None = None
+    name: str | None = None
+    severity: str | None = None
+    dup_of: str | None = None
+
+
 def _enforce_tenant(ident: Identity, system: str) -> None:
     if ident.system is not None and ident.system != system:
         raise HTTPException(403, "cross-tenant access denied")
@@ -105,10 +112,26 @@ def patch(feedback_id: str, body: PatchBody, request: Request,
                                severity=body.severity, comment=body.comment,
                                request_id=getattr(request.state, "request_id", None))
             elif body.severity is not None:
-                with conn.cursor() as cur:
-                    cur.execute("UPDATE fbk.feedback SET severity=%s WHERE id=%s",
-                                (body.severity, feedback_id))
-                conn.commit()
+                svc.set_severity(conn, feedback_id, body.severity, actor_id=ident.user,
+                                 request_id=getattr(request.state, "request_id", None))
+    except svc.FeedbackError as e:
+        raise HTTPException(e.status, e.detail) from None
+    return {"ok": True}
+
+
+@router.post("/{feedback_id}/triage")
+def triage(feedback_id: str, body: TriageBody, request: Request,
+           ident: Identity = Depends(require_role("triager"))):
+    """Set Triage-derived fields (type/name/severity/dup_of) — the channel the
+    Triage agent / human triager uses; PATCH only moves status/severity."""
+    try:
+        with db.connect() as conn:
+            svc.apply_triage(
+                conn, feedback_id, type_=body.type, name=body.name,
+                severity=body.severity, dup_of=body.dup_of,
+                actor_id=ident.user, actor_type="human",
+                request_id=getattr(request.state, "request_id", None),
+            )
     except svc.FeedbackError as e:
         raise HTTPException(e.status, e.detail) from None
     return {"ok": True}

@@ -33,7 +33,7 @@ classification: Type B (schema mới DB riêng feedback_kb, không đụng Layer
 
 > **What's New V1.1 (2026-06-24):**
 > - **§2.3 Wireframe → Mockup tương tác:** widget + dashboard render HTML thật, bấm nút / chọn radio / mở panel / expand row được ngay trong trang AP.
-> - **§3.3 Agent Construction (MỚI):** cách dựng từng agent trong 5 agent (file def, system prompt, tools, model, trigger, I/O, autonomy) + orchestrator.
+> - **§3.3 Agent Construction (MỚI):** cách dựng từng agent trong 4 agent (file def, system prompt, tools, model, trigger, I/O, autonomy) + orchestrator.
 > - **§3.4 MCP & Developer Integration (MỚI):** mô tả `feedbackkb-mcp` + sepo-mcp; 3 cách dev tích hợp FeedbackKB vào hệ thống của mình (widget snippet / REST API / MCP).
 
 > **Mục tiêu hệ thống:** Một nơi vừa (1) ghi nhận **feedback user** trong quá trình dùng các hệ thống internal, vừa (2) tích lũy **kinh nghiệm sửa lỗi** (bug-fix knowledge) — rồi để **agent team** triage tự động + fix bán tự động, con người chỉ duyệt quyết định quan trọng.
@@ -60,7 +60,7 @@ classification: Type B (schema mới DB riêng feedback_kb, không đụng Layer
 | F-08 | Triage tự động (severity/dedupe/link knowledge) | §2.4-CL1, §2.4-CL4 |
 | F-09 | Dry-run fix + human approval gate (apply prod) | §2.2-UF3, §2.4-CL5 |
 | F-10 | Dashboard feedback + knowledge (read) | §2.3-W2 |
-| F-11 | Agent Construction — 5 agent def + orchestrator | §3.3 |
+| F-11 | Agent Construction — 4 agent def + orchestrator | §3.3 |
 | F-12 | `feedbackkb-mcp` server (submit/list/search/capture) | §3.4 |
 | F-13 | Developer integration 3 cách (widget/REST/MCP) | §3.4 |
 | F-14 | Auto-chụp màn hình khi mở widget + Annotate (khoanh/bôi đỏ) | §2.3-W1/W1b, §2.4-CL6 |
@@ -82,7 +82,7 @@ classification: Type B (schema mới DB riêng feedback_kb, không đụng Layer
 - §3 Implementation
   - §3.1 Feature & Layer
   - §3.2 Task Classification (A/B/C)
-  - §3.3 Agent Construction (cách dựng 5 agent)
+  - §3.3 Agent Construction (cách dựng 4 agent)
   - §3.4 MCP & Developer Integration
   - §3.5 Developer Workflow (setup · hàng ngày · data với DB)
 - Phụ lục (Appendices)
@@ -211,7 +211,7 @@ erDiagram
   agent_task {
     uuid   id PK
     uuid   feedback_id FK
-    text   stage "conduct|triage|analyze|fix|knowledge"
+    text   stage "triage|analyze|fix|knowledge"
     text   status "queued|running|done|need_human|failed"
     text   assignee_agent
     text   idempotency_key "UNIQUE — chống double-process"
@@ -296,7 +296,7 @@ Index: `(system, status)`, `(created_at)`, `UNIQUE(system, external_system, exte
 #### `fbk.system_registry` — danh bạ hệ thống: **app_key_hash** (sha256, KHÔNG raw) + scopes + origin_allowlist + key_rotated_at; thuộc `org` (multi-tenant)
 #### `fbk.org` — tenant: nhiều system thuộc 1 org; ACL + isolation theo org
 
-**Note (no orphan):** mọi `agent_task`/`feedback_event`/`knowledge_ref`/`feedback_attachment` đều FK về `feedback` (trừ lesson standalone từ `/capture-fix` → `feedback_id` nullable).
+**Note (no orphan):** mọi `agent_task`/`feedback_event`/`knowledge_ref`/`feedback_attachment` đều FK về `feedback` — **trừ `feedback_event`** (cố ý BỎ FK: bảng append-only, audit phải sống sau GDPR delete, §7.6) và lesson standalone từ `/capture-fix` (`feedback_id` nullable).
 
 ---
 
@@ -411,6 +411,49 @@ sequenceDiagram
     F->>DB: status=wontfix | re-investigate
   end
 ```
+
+
+#### UF4 — VOI Persona × Function map (luồng × UX per persona)
+
+> Bày toàn bộ tương tác lên 1 mặt phẳng: **persona × chức năng × stage**. Ô = vai trò tham gia:
+> `✍️` thực hiện chính · `✅` duyệt (gate) · `👁` xem · `⚙️` tự động · `—` không. Bản tương tác đầy đủ (mermaid + bảng màu): `docs/voi_feedbackkb_flows.html`.
+
+| Group | Function / Stage | End-user | Triager | Admin/PO | Dev | Conductor | Triage | Analyst | Fixer |
+|---|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+| **Intake** | Submit feedback (form 1-ô) | ✍️ | — | — | ✍️ | 👁 | — | — | — |
+| | Auto-screenshot + annotate | ✍️ | — | — | — | — | — | — | — |
+| | Paste/attach ảnh | ✍️ | — | — | ✍️ | — | — | — | — |
+| **Triage** | Classify type/name/severity | — | 👁 | — | — | ⚙️ | ⚙️✍️ | — | — |
+| | Dedupe (symptom_hash + search) | — | 👁 | — | — | ⚙️ | ⚙️✍️ | — | — |
+| | NeedInfo — hỏi lại / bổ sung | ✍️ | ✅ | — | — | ⚙️ | ⚙️ | — | — |
+| **Analyze** | Root-cause analysis | — | 👁 | — | — | 👁 | — | ⚙️✍️ | — |
+| | Ground in knowledge (search lesson) | — | — | — | ✍️ | ⚙️ | ⚙️ | ⚙️✍️ | — |
+| **Fix** | Propose fix (draft PR + lesson) | — | — | — | — | 👁 | — | 👁 | ⚙️✍️ |
+| | ⛔ Approval gate (apply prod) | — | — | ✅ | ✅ | — | — | — | ⏸ chờ |
+| | Apply / PR sau duyệt | — | — | ✅ | 👁 | — | — | — | ✍️ |
+| **Knowledge** | Capture lesson (/capture-fix) | — | — | — | ✍️ | — | — | — | ⚙️ draft |
+| | Auto-capture (Stop-hook) | — | — | — | ✍️ | — | — | — | — |
+| | Search/reuse knowledge | — | — | — | ✍️ | ⚙️ | ⚙️ | ⚙️ | ⚙️ |
+| | Curate draft ▸ trusted | — | — | ✍️✅ | — | — | — | — | — |
+| **Review** | List + filter (tenant-scoped) | — | ✍️ | 👁 | — | — | — | — | — |
+| | Detail + events + tasks | — | ✍️👁 | 👁 | — | — | — | — | — |
+| | Status transition (guarded) | — | ✍️ | ✍️ | — | — | — | — | — |
+| **Admin** | Register / rotate app_key | — | — | ✍️ | ✍️ | — | — | — | — |
+| | GDPR export / delete / erase | — | — | ✍️ | — | — | — | — | — |
+| | Config (privacy/retention/open-register) | — | — | ✍️ | — | — | — | — | — |
+| **Integrate** | Mount widget (npm/CDN) | 👁 | — | — | ✍️ | — | — | — | — |
+| | REST forward / batch sync | — | — | — | ✍️ | — | — | — | — |
+| | MCP tools | — | — | — | ✍️ | ⚙️ | ⚙️ | ⚙️ | ⚙️ |
+| | CLI (register/init/sync) | — | — | ✍️ | ✍️ | — | — | — | — |
+
+**Độ phủ / gap:** End-user dồn ở **Intake** (cố tình — UX 1 chạm); Agent team gánh **Triage→Analyze→Fix** (⚙️); Human chỉ giữ **2 gate** — Triager (Review/transition) + Admin (⛔ apply-prod, GDPR); Developer là trục **Knowledge + Integrate**.
+
+**UX trọng yếu per persona:**
+- **End-user** — 1 ô `message*` zero-choice; auto-screenshot **local-only** (không upload tới khi Gửi); annotate blur cho dữ liệu nhạy cảm; 200 + cảm ơn ngay, xử lý nặng async.
+- **Developer** — tra/ghi knowledge **trong IDE** (giải nỗi đau #1); setup **1 lệnh** `npx feedbackkb`; Stop-hook auto rút lesson; I/O qua REST+MCP, **không SQL**.
+- **Triager** — list **đã có tiêu đề** (Triage rút `name`); tenant-scoped; transition **có rào** (bug nặng resolved bắt buộc lesson); audit append-only.
+- **Admin/PO** — chỉ duyệt việc **irreversible** (apply prod / merge / xoá lesson); quyết 1 click có đủ ngữ cảnh; onboard không cấp gì (seed/open-register).
+- **Agent team** — least-privilege per stage; untrusted input bọc delimiter (chống injection); queue `FOR UPDATE SKIP LOCKED` + idempotency; **hard-stop ở gate** (chỉ người chạm prod).
 
 ### §2.3 UIWireFrame (Mockup tương tác)
 
@@ -875,7 +918,7 @@ submit_feedback(system, message, attachment_ids?, page_url?, context?) -> {id, s
 list_feedback(system?, status?, limit?)                     -> [{id, sev, type, msg, status}]
 get_feedback(id)                                            -> {…full + events + agent_task}
 update_status(id, status, comment?)                         -> {ok}   # transition guard CL2
-search_knowledge(query, system?)                            -> [{wiki_path, title, score}]
+search_knowledge(query, system?)                            -> [{store_ref, title, score}]
 capture_lesson(system, category, symptom, root_cause, fix, files, prevent) -> {wiki_path}
 link_knowledge(feedback_id, wiki_path)                      -> {ok}
 ```
@@ -1070,6 +1113,22 @@ flowchart LR
 
 ---
 
+#### §3.5.4 Developer Processes — 4 skill đóng gói (mỗi process = 1 luồng)
+
+> Mỗi process gói thành 1 skill chạy 1 luồng. **Onboard gộp 1 lần** (setup + nhúng widget).
+> **Intake mặc định = Widget → API trung tâm → Postgres đã tạo** (`fbk.*`); feedback của mọi
+> hệ thống đều lấy/ghi trên **cùng 1 DB trung tâm**. Dev không dựng DB, không chạm SQL, không cầm cred DB.
+
+| # | Skill | Nhịp | Việc | Công cụ |
+|---|---|---|---|---|
+| **P1** | `/feedbackkb-onboard` | 1 lần / hệ | Cấp app_key → **nhúng widget vào app dev** → cắm MCP/hook/rules → verify feedback vào DB trung tâm | CLI `register`+`init-mcp`+`init-hook`+`init-rules`, widget npm/CDN |
+| **P2** | `/feedbackkb-knowledge` | hằng ngày | **search lesson cũ → fix → capture lesson** (giải nỗi đau #1) | MCP `search_knowledge`/`capture_lesson`, skill `/capture-fix`, Stop-hook |
+| **P3** | `/feedbackkb-fix` | mỗi feedback | agent triage→analyze→propose fix → **DỪNG ở human gate** | agent team `fbk-*`, approval gate |
+| **P4** | `/feedbackkb-ops` | định kỳ | rotate key · GDPR · config · batch sync | admin route, CLI `sync` |
+
+**Nhịp:** P1 (once) → **P2 + P3 = vòng lặp hằng ngày** → P4 (định kỳ). Trục xương sống dev = **P2 Knowledge**.
+P3 chỉ con người giữ gate apply-prod; P4 cần role admin.
+
 ## Phụ lục (Appendices)
 
 ### §4 Roadmap dựng tăng dần (giá trị sớm)
@@ -1130,7 +1189,7 @@ feedbackkb/                      # github.com/clevai/feedbackkb (public, MIT)
 │   ├── storage/       # gcs.ts · s3.ts · local.ts   (chọn qua FEEDBACKKB_STORAGE)
 │   ├── search/        # sepo.ts · pgvector.ts · keyword.ts
 │   └── auth/          # jwt.ts · appkey.ts · none.ts
-├── agents/            # .claude/agents/fbk-*.md (5 agent def, đem dùng luôn)
+├── agents/            # .claude/agents/fbk-*.md (4 agent def, đem dùng luôn)
 ├── migrations/        # SQL tạo schema fbk.* (chạy lúc setup)
 ├── docker-compose.yml # self-host full stack
 ├── .env.example       # mọi config, KHÔNG có secret thật
@@ -1240,7 +1299,7 @@ Metrics/log/trace: API latency, upload fail, triage/agent fail, retry, queue dep
 **7 mục lõi (coverage 100%):**
 - [x] §1 ERD: mọi entity có bảng + cột + FK + index (org/system_registry/feedback/feedback_attachment/feedback_event/agent_task/knowledge_ref/knowledge_doc)
 - [x] §2.1 ProcessDescription: P1 intake · P2 status machine · P3 capture · P4 agent pipeline
-- [x] §2.2 UserFlows: UF1 gửi feedback · UF2 capture-fix · UF3 fix gate (có error case)
+- [x] §2.2 UserFlows: UF1 gửi feedback · UF2 capture-fix · UF3 fix gate (có error case) · UF4 VOI persona×function map
 - [x] §2.3 UIWireFrame: W1 widget (mockup tương tác) · W1b annotate · W2 dashboard
 - [x] §2.4 Complex Logic: CL1–CL9 (autonomy/guard/lesson/dedupe/approval/screenshot/enforcement/**impact-regression/context-grounding**) có pseudocode/công thức
 - [x] §3.1 Feature & Layer: F-01..F-19 map Feature→Controller→Service→Tables + API contract
