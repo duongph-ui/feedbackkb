@@ -14,18 +14,31 @@ và Claude Code trong repo tra/ghi được knowledge.
 > - Dev **KHÔNG** dựng DB, **KHÔNG** chạm SQL, **KHÔNG** cầm cred DB. Chỉ cầm `app_key`.
 > - Mọi feedback của mọi hệ thống đều lấy/ghi trên **cùng 1 DB trung tâm** (multi-tenant theo `system`).
 
-## Inputs cần hỏi dev (tối thiểu)
-1. `system` code (vd `FPS`) + `name` (vd "Payment System").
-2. App của dev build kiểu gì: **React (bundler)** hay **không bundler** (dùng bản CDN `<script>`).
-3. URL API trung tâm (mặc định `https://fpa.mikai.tech` nếu chưa có).
+## CHỈ hỏi user 1 thứ (giá trị nghiệp vụ)
+**Mã hệ thống** + tên — tên ngắn cho app muốn gắn feedback.
+> Hỏi bằng tiếng thường, kèm ví dụ + gợi ý, KHÔNG dùng từ kỹ thuật:
+> *"App nào anh muốn gắn nút thu phản hồi? Cho em 1 mã ngắn + tên — ví dụ `FPS` = Payment System, `FPA` = Analytics. App của anh mã gì?"*
 
-## Steps (1 luồng)
+**TUYỆT ĐỐI KHÔNG hỏi user** (skill tự quyết hết — xem bảng dưới):
+
+| Quyết định kỹ thuật | Skill TỰ làm, KHÔNG hỏi |
+|---|---|
+| API URL | mặc định `https://fpa.mikai.tech`; nếu repo có `.env` ghi API khác thì dùng nó |
+| React hay không-bundler | đọc `package.json`: có `react`/`next`/`vite` → widget npm; không → CDN `<script>` |
+| auth=appkey hay none | thử `register`; API trả key → appkey; API offline/nội bộ → `auth=none` + seed system |
+| widget chưa publish npm (version 0.0.0) | fallback **link local**: `npm i <đường-dẫn>/packages/widget` hoặc copy bản CDN tay; KHÔNG báo lỗi, KHÔNG hỏi |
+| MCP/hook/rules | luôn cắm hết (init-mcp + init-hook + init-rules); không hỏi có cắm không |
+
+→ Nếu BẤT KỲ bước kỹ thuật nào kẹt → **tự chọn fallback an toàn rồi tiếp**, ghi 1 dòng "em tự quyết X vì Y" vào báo cáo cuối, KHÔNG dừng hỏi anh.
+
+## Steps (1 luồng — tự chạy)
+0. **Auto-detect** (im lặng): đọc `package.json` (framework) + `.env`/`.mcp.json` (API URL) + `packages/widget/package.json` (đã publish chưa). Quyết các giá trị ở bảng trên.
 1. **Register → app_key**
    ```bash
    npx feedbackkb register --system <CODE> --name "<Name>" --api <API_URL>
    #   → fbk_live_xxx  (lưu vault/secret, KHÔNG commit)
    ```
-   Nếu chạy `auth=none` (mạng nội bộ) thì bỏ qua key — chỉ cần system tồn tại (seed/open-register).
+   API offline / nội bộ → bỏ key, set `auth=none` + seed system (skill tự quyết, không hỏi).
 2. **Nhúng widget vào app dev** (tính năng feedback cho end-user)
    - React: `npm i @clevai/feedbackkb-widget` rồi mount 1 lần ở layout:
      ```tsx
@@ -33,6 +46,7 @@ và Claude Code trong repo tra/ghi được knowledge.
      <FeedbackWidget system="<CODE>" apiBase="<API_URL>" appKey="<app_key>" />
      ```
    - Không bundler: chèn 1 thẻ `<script>` bản CDN + `data-system` / `data-api` / `data-key`.
+   - **Widget chưa publish npm** (version 0.0.0) → link local: `npm i <repo>/packages/widget` (hoặc `pnpm add link:...`); nếu vẫn kẹt → dùng bản CDN tay. Tự làm, không hỏi.
 3. **Cắm MCP** (dev tra/ghi knowledge trong IDE)
    ```bash
    npx feedbackkb init-mcp --key <app_key> --api <API_URL>   # ghi block .mcp.json
