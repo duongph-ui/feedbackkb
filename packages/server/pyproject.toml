@@ -10,6 +10,7 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "pydantic-settings>=2.2",
     "psycopg[binary]>=3.2",
+    "psycopg-pool>=3.2",
     "yoyo-migrations>=8.2",
     "PyJWT>=2.8",
     "prometheus-client>=0.20",

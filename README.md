@@ -22,18 +22,30 @@ migrations/ # SQL (yoyo) creating schema fbk.*
 docs/       # AP + ISP + audit
 ```
 
+## Deployment model
+
+**One central API** holds the DB credentials; every consumer reaches the data over HTTP
+with an `app_key` and **never gets a Postgres grant** — the API is the permission boundary.
+The database is the dedicated FeedbackKB DB on `postgres.clevai.vn:5432` (schema `fbk`).
+
+```
+ widget / app / mcp ──HTTP + X-App-Key──▶  FeedbackKB API  ──pooled──▶  postgres.clevai.vn (fbk)
+   (no DB creds)                          (DATABASE_URL, server-side only)
+```
+
+Full runbook: [`docs/deploy-clevai.md`](docs/deploy-clevai.md).
+
 ## Quickstart (dev)
 
 ```bash
-# 1. Python server
 cd packages/server
 python -m venv .venv && . .venv/Scripts/activate   # Windows; use bin/activate on *nix
 pip install -e ".[dev]"
-pytest                                              # unit tests
+pytest                                              # unit tests (DB-bound ones self-skip)
 
-# 2. Full stack (needs Docker) — Postgres + API
-cp .env.example .env
-docker compose up -d
+# point at the dedicated DB (creds from the ops vault, never committed)
+cp ../../.env.example .env                          # fill DATABASE_URL
+uvicorn feedbackkb_server.app:app --port 8000
 ```
 
 ## Status
