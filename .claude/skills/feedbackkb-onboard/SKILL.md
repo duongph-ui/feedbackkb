@@ -51,11 +51,14 @@ và Claude Code trong repo tra/ghi được knowledge.
    ```bash
    npx feedbackkb init-mcp --key <app_key> --api <API_URL>   # ghi block .mcp.json
    ```
-4. **Cắm Stop-hook** (auto rút lesson cuối session)
+4. **Cắm hook tự-động** (2 rule chạy KHÔNG cần gõ tay)
    ```bash
    npx feedbackkb init-hook
    ```
-5. **Cắm rules** (CLAUDE.md routing: ưu tiên search_knowledge trước khi fix)
+   Ghi 2 hook vào `.claude/settings.json`:
+   - `UserPromptSubmit` → `hook-presearch`: prompt có ý-định-fix → ép gọi `search_knowledge` TRƯỚC khi sửa.
+   - `Stop` → `hook-capture`: phiên có đổi code → block 1 lần, ép `/capture-fix` ghi lesson trước khi kết phiên (chống loop qua `stop_hook_active`).
+5. **Cắm rules** (fallback mềm — CLAUDE.md routing, phòng khi hook tắt)
    ```bash
    npx feedbackkb init-rules
    ```

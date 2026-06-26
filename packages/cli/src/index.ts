@@ -1,8 +1,24 @@
 #!/usr/bin/env node
 // feedbackkb CLI (Step 21b).
 import { readFileSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { Command } from "commander";
-import { initHook, initMcp, initRules, register, sync } from "./commands.js";
+import {
+  captureGate, initHook, initMcp, initRules, presearch, register, sync,
+} from "./commands.js";
+
+// Read all of stdin (hook payload from Claude Code), parse JSON, tolerate empty.
+async function readStdinJson(): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  for await (const c of process.stdin) chunks.push(c as Buffer);
+  const raw = Buffer.concat(chunks).toString("utf8").trim();
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
 
 const program = new Command();
 program.name("feedbackkb").description("FeedbackKB setup CLI").version("0.0.0");
@@ -30,7 +46,28 @@ program
 
 program.command("init-hook").action(() => {
   initHook(process.cwd());
-  console.log("added Stop-hook to .claude/settings.json");
+  console.log("wired UserPromptSubmit (hook-presearch) + Stop (hook-capture) into .claude/settings.json");
+});
+
+// UserPromptSubmit hook: inject the "search_knowledge first" directive on fix intent.
+program.command("hook-presearch").action(async () => {
+  const directive = presearch(await readStdinJson());
+  if (directive) process.stdout.write(directive);
+  process.exit(0);
+});
+
+// Stop hook: block once to force /capture-fix when the session changed code.
+program.command("hook-capture").action(async () => {
+  const input = await readStdinJson();
+  let status = "";
+  try {
+    status = execSync("git status --porcelain", { encoding: "utf8" });
+  } catch {
+    status = ""; // not a git repo → nothing to gate on
+  }
+  const decision = captureGate(input as { stop_hook_active?: boolean }, status);
+  if (decision) process.stdout.write(JSON.stringify(decision));
+  process.exit(0);
 });
 
 program.command("init-rules").action(() => {
