@@ -226,14 +226,14 @@ def query(
     with conn.cursor() as cur:
         cur.execute(
             f"""
-            SELECT id, system, type, severity, message, status, created_at
+            SELECT id, system, type, severity, message, status, page_url, created_at
               FROM fbk.feedback{where}
              ORDER BY created_at DESC LIMIT %s
             """,
             params,
         )
         rows = cur.fetchall()
-    cols = ("id", "system", "type", "severity", "message", "status", "created_at")
+    cols = ("id", "system", "type", "severity", "message", "status", "page_url", "created_at")
     return [dict(zip(cols, r)) for r in rows]
 
 
@@ -241,7 +241,7 @@ def get(conn: psycopg.Connection, feedback_id: str, requester_system: str | None
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT id, system, type, severity, message, status, context, has_secret, created_at
+            SELECT id, system, type, severity, message, status, page_url, context, has_secret, created_at
               FROM fbk.feedback WHERE id=%s
             """,
             (feedback_id,),
@@ -252,7 +252,7 @@ def get(conn: psycopg.Connection, feedback_id: str, requester_system: str | None
         if requester_system is not None and row[1] != requester_system:
             raise FeedbackError(403, "cross-tenant access denied")
         cols = ("id", "system", "type", "severity", "message", "status",
-                "context", "has_secret", "created_at")
+                "page_url", "context", "has_secret", "created_at")
         fb = dict(zip(cols, row))
         cur.execute(
             "SELECT actor_type, action, created_at FROM fbk.feedback_event "
