@@ -79,3 +79,21 @@ def test_cross_tenant_read_denied():
         with pytest.raises(svc.AttachmentError) as ei:
             svc.get_signed_url(conn, storage, res.attachment_id, "T_B")
     assert ei.value.status == 403
+
+
+@needs_db
+def test_get_content_returns_bytes_and_acl():
+    from feedbackkb_server import db
+    from feedbackkb_server.repo import system
+    db.apply_migrations()
+    storage = get_storage("local")  # single instance → blob persists in memory
+    with db.connect() as conn:
+        system.register_system(conn, code="T_C", name="c")
+        res = svc.create_attachment(conn, storage, system="T_C",
+                                    data=b"\x89PNG-pixels", mime="image/png", scan_mode="off")
+        data, mime = svc.get_content(conn, storage, res.attachment_id, "T_C")
+        assert data == b"\x89PNG-pixels" and mime == "image/png"
+        # cross-tenant read denied (same gate as signed url)
+        with pytest.raises(svc.AttachmentError) as ei:
+            svc.get_content(conn, storage, res.attachment_id, "T_OTHER")
+    assert ei.value.status == 403

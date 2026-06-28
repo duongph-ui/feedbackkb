@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// feedbackkb-mcp entry (Step 21a). Registers the 7 tools on an MCP stdio server.
+// feedbackkb-mcp entry (Step 21a). Registers the tools on an MCP stdio server.
 // Config via env: FEEDBACKKB_API, FEEDBACKKB_KEY.
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -30,6 +30,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const fn = tools[name];
   if (!fn) throw new Error(`unknown tool ${name}`);
   const result = await fn(ctx, (req.params.arguments ?? {}) as never);
+  // Image results → MCP image content block so vision agents SEE the screenshot.
+  if (result && typeof result === "object" && (result as { __type?: string }).__type === "image") {
+    const img = result as { mimeType: string; data: string };
+    return { content: [{ type: "image", data: img.data, mimeType: img.mimeType }] };
+  }
   return { content: [{ type: "text", text: JSON.stringify(result) }] };
 });
 

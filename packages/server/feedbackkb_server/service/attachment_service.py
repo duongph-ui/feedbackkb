@@ -93,3 +93,31 @@ def get_signed_url(
     if status == "quarantined":
         raise AttachmentError(403, "attachment quarantined")
     return storage.get_signed_url(storage_key, ttl=ttl)
+
+
+def get_content(
+    conn: psycopg.Connection,
+    storage: StorageAdapter,
+    attachment_id: str,
+    requester_system: str | None,
+) -> tuple[bytes, str]:
+    """Raw image bytes + mime, same ACL/quarantine gate as get_signed_url. Used to
+    hand the screenshot to an MCP/agent as vision content (a URL an LLM can't open
+    is useless to the fix flow)."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT system, storage_key, status FROM fbk.feedback_attachment WHERE id=%s",
+            (attachment_id,),
+        )
+        row = cur.fetchone()
+    if row is None:
+        raise AttachmentError(404, "attachment not found")
+    system, storage_key, status = row
+    if requester_system is not None and requester_system != system:
+        raise AttachmentError(403, "cross-tenant access denied")
+    if status == "quarantined":
+        raise AttachmentError(403, "attachment quarantined")
+    try:
+        return storage.get_bytes(storage_key)
+    except KeyError:
+        raise AttachmentError(404, "object missing in store") from None

@@ -143,6 +143,15 @@ def apply_triage(
     agent (or the auto-triage runtime) uses to set the fields it derives. Marking
     a duplicate routes status to 'dup'; otherwise 'triaged'.
     """
+    # Validate enums up-front so a bad value returns 422 instead of bubbling a raw
+    # CHECK-constraint violation as a 500 (the auto-triage agent hits this path).
+    _TYPES = {"bug", "idea", "question"}
+    _SEVS = {"low", "med", "high", "crit"}
+    if type_ is not None and type_ not in _TYPES:
+        raise FeedbackError(422, f"invalid type '{type_}' (allowed: {', '.join(sorted(_TYPES))})")
+    if severity is not None and severity not in _SEVS:
+        raise FeedbackError(422, f"invalid severity '{severity}' (allowed: {', '.join(sorted(_SEVS))})")
+
     sets, params = [], []
     for col, val in (("type", type_), ("name", name), ("severity", severity), ("dup_of", dup_of)):
         if val is not None:
@@ -256,6 +265,17 @@ def get(conn: psycopg.Connection, feedback_id: str, requester_system: str | None
             (feedback_id,),
         )
         fb["agent_tasks"] = [dict(zip(("stage", "status"), r)) for r in cur.fetchall()]
+        # attachments: surface ids so the fix/agent flow knows screenshots exist and
+        # can pull each via get_attachment_image (MCP) / GET …/{id}/content.
+        cur.execute(
+            "SELECT id, kind, mime, status FROM fbk.feedback_attachment "
+            "WHERE feedback_id=%s ORDER BY created_at",
+            (feedback_id,),
+        )
+        fb["attachments"] = [
+            {"id": str(r[0]), "kind": r[1], "mime": r[2], "status": r[3]}
+            for r in cur.fetchall()
+        ]
     return fb
 
 

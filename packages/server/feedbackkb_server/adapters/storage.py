@@ -23,6 +23,12 @@ class StorageAdapter(abc.ABC):
     def get_signed_url(self, storage_key: str, ttl: int = 300) -> str:
         """Return a URL that expires after ttl seconds."""
 
+    @abc.abstractmethod
+    def get_bytes(self, storage_key: str) -> tuple[bytes, str]:
+        """Fetch raw object bytes + mime. For server-side reads (e.g. handing the
+        image to an MCP/agent as vision content) where a URL the LLM can't open
+        is useless. ACL is enforced by the caller (attachment_service), not here."""
+
 
 class LocalStorage(StorageAdapter):
     """In-process store for dev/self-host-without-cloud. Not for prod scale."""
@@ -41,6 +47,12 @@ class LocalStorage(StorageAdapter):
         expires = int(time.time()) + ttl
         sig = self._sign(storage_key, expires)
         return f"/local-store/{storage_key}?expires={expires}&sig={sig}"
+
+    def get_bytes(self, storage_key: str) -> tuple[bytes, str]:
+        blob = self._blobs.get(storage_key)
+        if blob is None:
+            raise KeyError(storage_key)
+        return blob  # (data, mime)
 
     def delete(self, storage_key: str) -> None:
         self._blobs.pop(storage_key, None)
@@ -92,6 +104,12 @@ class GcsStorage(StorageAdapter):
             version="v4", expiration=timedelta(seconds=ttl), method="GET"
         )
 
+    def get_bytes(self, storage_key: str) -> tuple[bytes, str]:
+        blob = self._bucket.blob(storage_key)
+        data = blob.download_as_bytes()
+        blob.reload()
+        return data, blob.content_type or "application/octet-stream"
+
 
 class S3Storage(StorageAdapter):
     """AWS S3 (or compatible) — private objects, presigned URLs. (Step 7)"""
@@ -120,3 +138,7 @@ class S3Storage(StorageAdapter):
             Params={"Bucket": self._bucket_name, "Key": storage_key},
             ExpiresIn=ttl,
         )
+
+    def get_bytes(self, storage_key: str) -> tuple[bytes, str]:
+        obj = self._client.get_object(Bucket=self._bucket_name, Key=storage_key)
+        return obj["Body"].read(), obj.get("ContentType") or "application/octet-stream"
