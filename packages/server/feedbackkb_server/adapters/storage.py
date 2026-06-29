@@ -173,14 +173,36 @@ class S3Storage(StorageAdapter):
         self._cdn = os.environ.get("CDN_HOST_NAME", "").strip().rstrip("/")
 
         endpoint = os.environ.get("AWS_S3_ENDPOINT", "").strip() or None
+        if endpoint and "://" not in endpoint:
+            endpoint = f"https://{endpoint}"  # boto3 rejects a scheme-less endpoint
         access_id = os.environ.get("AWS_S3_ACCESS_ID", "").strip() or None
         access_key = os.environ.get("AWS_S3_ACCESS_KEY", "").strip() or None
-        self._client = boto3.client(
-            "s3",
-            endpoint_url=endpoint,
-            aws_access_key_id=access_id,
-            aws_secret_access_key=access_key,
-        )
+
+        # botocore >=1.36 sends a flexible-checksum trailer (CRC32) by default; many
+        # S3-compatible gateways (here: a non-AWS endpoint) reject it with
+        # XAmzContentSHA256Mismatch on PutObject. Force checksums to "when_required"
+        # and sigv4 so uploads work against the gateway. The kwargs are newish, so
+        # fall back gracefully on older botocore that doesn't accept them.
+        client_kw = {
+            "endpoint_url": endpoint,
+            "aws_access_key_id": access_id,
+            "aws_secret_access_key": access_key,
+        }
+        try:
+            from botocore.config import Config
+        except ImportError:
+            Config = None  # botocore absent (e.g. tests mock only boto3)
+        if Config is not None:
+            cfg_kw = {"signature_version": "s3v4"}
+            try:
+                client_kw["config"] = Config(
+                    request_checksum_calculation="when_required",
+                    response_checksum_validation="when_required",
+                    **cfg_kw,
+                )
+            except TypeError:
+                client_kw["config"] = Config(**cfg_kw)
+        self._client = boto3.client("s3", **client_kw)
 
     def put(self, data: bytes, mime: str) -> str:
         key = f"{self._prefix}{uuid.uuid4().hex}"  # full object key, stored in DB
@@ -199,5 +221,10 @@ class S3Storage(StorageAdapter):
         )
 
     def get_bytes(self, storage_key: str) -> tuple[bytes, str]:
-        obj = self._client.get_object(Bucket=self._bucket_name, Key=storage_key)
+        try:
+            obj = self._client.get_object(Bucket=self._bucket_name, Key=storage_key)
+        except self._client.exceptions.NoSuchKey:
+            # missing object (e.g. legacy attachments stored before s3) -> clean 404,
+            # not a 500. Callers translate KeyError into a not-found response.
+            raise KeyError(storage_key) from None
         return obj["Body"].read(), obj.get("ContentType") or "application/octet-stream"
