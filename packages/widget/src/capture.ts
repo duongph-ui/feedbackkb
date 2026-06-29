@@ -59,18 +59,23 @@ function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return toBlobSafe(canvas);
 }
 
-// Resolve a PNG blob. In non-browser canvases (jsdom) toBlob is a no-op stub
-// that never invokes the callback, so a short fallback resolves an empty blob.
+// Resolve a PNG blob. In non-browser canvases (jsdom) toBlob is a no-op stub that
+// never invokes the callback, so we resolve empty IMMEDIATELY when toBlob is absent.
+// For a real canvas we must NOT race a short timer against the encode: a full-page
+// screenshot can take >>200ms to encode, and a premature empty blob makes the caller
+// silently skip the upload (blob.size === 0) — the screenshot then never reaches the
+// server even though a local thumbnail rendered. Use a long safety timeout only.
 export function toBlobSafe(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve) => {
     const empty = new Blob([], { type: "image/png" });
-    const fallback = setTimeout(() => resolve(empty), 200);
+    if (typeof canvas.toBlob !== "function") {
+      resolve(empty); // jsdom / no encoder → nothing to upload
+      return;
+    }
+    // Safety net only — guards a toBlob that never fires; long enough that a real
+    // PNG encode of a large canvas always wins the race.
+    const fallback = setTimeout(() => resolve(empty), 15000);
     try {
-      if (!canvas.toBlob) {
-        clearTimeout(fallback);
-        resolve(empty);
-        return;
-      }
       canvas.toBlob((b) => {
         clearTimeout(fallback);
         resolve(b ?? empty);
