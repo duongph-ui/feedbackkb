@@ -11,6 +11,7 @@ split can re-export from a top-level path later.
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Callable
 
 from .auth import AppKeyAuth, AuthAdapter, AuthError, Identity, JwtAuth, NoneAuth
@@ -33,7 +34,11 @@ def _pick(registry: dict, name: str, concern: str):
         ) from None
 
 
+@lru_cache(maxsize=None)
 def get_storage(name: str) -> StorageAdapter:
+    # cached singleton per backend — a fresh instance per call meant the local
+    # store's signing key/dir reset every request (and the old in-memory blobs
+    # were unreachable). One instance keeps uploads readable across requests.
     return _pick(_STORAGE, name, "storage")
 
 

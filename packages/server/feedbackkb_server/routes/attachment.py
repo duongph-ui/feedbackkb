@@ -6,7 +6,7 @@ GET  /api/feedback/attachment/{id} — returns a short-lived signed URL (ACL che
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
 
 from .. import db
 from .. import observability as obs
@@ -50,3 +50,15 @@ def signed(attachment_id: str, ident: Identity = Depends(get_identity)):
     except svc.AttachmentError as e:
         raise HTTPException(e.status, e.detail) from None
     return {"url": url}
+
+
+@router.get("/{attachment_id}/content")
+def content(attachment_id: str, ident: Identity = Depends(get_identity)):
+    """Raw image bytes (ACL-checked). For server-side/agent reads that need the
+    actual pixels, not a URL — e.g. the MCP get_attachment_image vision tool."""
+    try:
+        with db.connect() as conn:
+            data, mime = svc.get_content(conn, _storage(), attachment_id, ident.system)
+    except svc.AttachmentError as e:
+        raise HTTPException(e.status, e.detail) from None
+    return Response(content=data, media_type=mime)

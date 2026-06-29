@@ -10,8 +10,11 @@ from __future__ import annotations
 import abc
 import hashlib
 import hmac
+import os
+import tempfile
 import time
 import uuid
+from pathlib import Path
 
 
 class StorageAdapter(abc.ABC):
@@ -23,18 +26,42 @@ class StorageAdapter(abc.ABC):
     def get_signed_url(self, storage_key: str, ttl: int = 300) -> str:
         """Return a URL that expires after ttl seconds."""
 
+    @abc.abstractmethod
+    def get_bytes(self, storage_key: str) -> tuple[bytes, str]:
+        """Fetch raw object bytes + mime. For server-side reads (e.g. handing the
+        image to an MCP/agent as vision content) where a URL the LLM can't open
+        is useless. ACL is enforced by the caller (attachment_service), not here."""
+
 
 class LocalStorage(StorageAdapter):
-    """In-process store for dev/self-host-without-cloud. Not for prod scale."""
+    """Disk-backed store for dev/self-host-without-cloud.
 
-    _SECRET = b"feedbackkb-local-dev"  # local-only; real signing keys via env in cloud adapters
+    Bytes persist to a directory (FEEDBACKKB_LOCAL_DIR, default a stable temp dir)
+    so they survive process restarts and are shared across requests. The previous
+    in-memory dict lost every upload immediately (get_storage made a NEW instance
+    per request + nothing survived restart) → attachments were never readable.
+    Reads go through a signed token URL (`/local-store`) or get_bytes (server-side).
+    Not for multi-node prod — use gcs/s3 there.
+    """
 
-    def __init__(self) -> None:
-        self._blobs: dict[str, tuple[bytes, str]] = {}
+    def __init__(self, base_dir: str | None = None) -> None:
+        d = base_dir or os.environ.get("FEEDBACKKB_LOCAL_DIR") \
+            or os.path.join(tempfile.gettempdir(), "feedbackkb-attachments")
+        self._dir = Path(d)
+        self._dir.mkdir(parents=True, exist_ok=True)
+        self._SECRET = (os.environ.get("FEEDBACKKB_LOCAL_SECRET") or "feedbackkb-local-dev").encode()
+
+    def _path(self, key: str) -> Path:
+        # key is a hex uuid (alnum only) — guard against path traversal regardless.
+        if not key.isalnum():
+            raise KeyError(key)
+        return self._dir / key
 
     def put(self, data: bytes, mime: str) -> str:
         key = uuid.uuid4().hex  # no original filename -> not guessable
-        self._blobs[key] = (data, mime)
+        p = self._path(key)
+        p.write_bytes(data)
+        p.with_suffix(".mime").write_text(mime or "application/octet-stream", encoding="utf-8")
         return key
 
     def get_signed_url(self, storage_key: str, ttl: int = 300) -> str:
@@ -42,8 +69,21 @@ class LocalStorage(StorageAdapter):
         sig = self._sign(storage_key, expires)
         return f"/local-store/{storage_key}?expires={expires}&sig={sig}"
 
+    def get_bytes(self, storage_key: str) -> tuple[bytes, str]:
+        p = self._path(storage_key)
+        if not p.exists():
+            raise KeyError(storage_key)
+        mp = p.with_suffix(".mime")
+        mime = mp.read_text(encoding="utf-8") if mp.exists() else "application/octet-stream"
+        return p.read_bytes(), mime
+
     def delete(self, storage_key: str) -> None:
-        self._blobs.pop(storage_key, None)
+        try:
+            p = self._path(storage_key)
+        except KeyError:
+            return
+        p.unlink(missing_ok=True)
+        p.with_suffix(".mime").unlink(missing_ok=True)
 
     def _sign(self, key: str, expires: int) -> str:
         msg = f"{key}:{expires}".encode()
@@ -92,6 +132,12 @@ class GcsStorage(StorageAdapter):
             version="v4", expiration=timedelta(seconds=ttl), method="GET"
         )
 
+    def get_bytes(self, storage_key: str) -> tuple[bytes, str]:
+        blob = self._bucket.blob(storage_key)
+        data = blob.download_as_bytes()
+        blob.reload()
+        return data, blob.content_type or "application/octet-stream"
+
 
 class S3Storage(StorageAdapter):
     """AWS S3 (or compatible) — private objects, presigned URLs. (Step 7)"""
@@ -120,3 +166,7 @@ class S3Storage(StorageAdapter):
             Params={"Bucket": self._bucket_name, "Key": storage_key},
             ExpiresIn=ttl,
         )
+
+    def get_bytes(self, storage_key: str) -> tuple[bytes, str]:
+        obj = self._client.get_object(Bucket=self._bucket_name, Key=storage_key)
+        return obj["Body"].read(), obj.get("ContentType") or "application/octet-stream"

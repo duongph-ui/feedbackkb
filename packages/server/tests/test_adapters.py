@@ -47,6 +47,24 @@ def test_local_storage_roundtrip_and_signing():
     assert key in url and "sig=" in url
 
 
+def test_local_storage_persists_across_instances(tmp_path):
+    # regression: in-memory store lost bytes on every new instance/restart. Disk
+    # backing must survive a fresh LocalStorage pointed at the same dir.
+    from feedbackkb_server.adapters.storage import LocalStorage
+
+    a = LocalStorage(str(tmp_path))
+    key = a.put(b"\x89PNG", "image/png")
+    b = LocalStorage(str(tmp_path))  # simulate restart / per-request instance
+    data, mime = b.get_bytes(key)
+    assert data == b"\x89PNG" and mime == "image/png"
+    with pytest.raises(KeyError):
+        b.get_bytes("../escape")  # path-traversal guard
+
+
+def test_get_storage_is_singleton():
+    assert adapters.get_storage("local") is adapters.get_storage("local")
+
+
 def test_none_auth_is_anonymous():
     ident = adapters.get_auth("none").verify({})
     assert isinstance(ident, Identity)
