@@ -140,27 +140,58 @@ class GcsStorage(StorageAdapter):
 
 
 class S3Storage(StorageAdapter):
-    """AWS S3 (or compatible) — private objects, presigned URLs. (Step 7)"""
+    """AWS S3 (or S3-compatible) — reads the Clevai infra env that staging/prod
+    already set:
+
+      AWS_S3_ACCESS_ID / AWS_S3_ACCESS_KEY  credentials
+      AWS_S3_BUCKET_NAME                     bucket
+      AWS_S3_ENDPOINT                        endpoint URL (S3-compatible / region)
+      AWS_S3_PATH_UPLOADING                  key prefix (folder) for uploads
+      CDN_HOST_NAME                          if set, get_signed_url returns a CDN
+                                             URL instead of a presigned S3 URL
+
+    The DB stores the FULL object key (prefix + uuid) as storage_key, so reads
+    reconstruct the path without re-reading env. boto3 imported lazily so the
+    package loads without it; a real instantiation without boto3 fails loudly.
+    """
 
     def __init__(self, bucket: str | None = None) -> None:
         import os
 
-        self._bucket_name = bucket or os.environ.get("S3_BUCKET", "")
+        self._bucket_name = bucket or os.environ.get("AWS_S3_BUCKET_NAME", "") \
+            or os.environ.get("S3_BUCKET", "")
         if not self._bucket_name:
-            raise RuntimeError("S3_BUCKET not set")
+            raise RuntimeError("AWS_S3_BUCKET_NAME not set")
         try:
             import boto3
         except ImportError as e:
             raise RuntimeError("boto3 not installed (pip install boto3)") from e
 
-        self._client = boto3.client("s3")
+        # prefix: normalise to "foo/bar/" (no leading slash, single trailing slash)
+        prefix = os.environ.get("AWS_S3_PATH_UPLOADING", "").strip().strip("/")
+        self._prefix = f"{prefix}/" if prefix else ""
+        self._cdn = os.environ.get("CDN_HOST_NAME", "").strip().rstrip("/")
+
+        endpoint = os.environ.get("AWS_S3_ENDPOINT", "").strip() or None
+        access_id = os.environ.get("AWS_S3_ACCESS_ID", "").strip() or None
+        access_key = os.environ.get("AWS_S3_ACCESS_KEY", "").strip() or None
+        self._client = boto3.client(
+            "s3",
+            endpoint_url=endpoint,
+            aws_access_key_id=access_id,
+            aws_secret_access_key=access_key,
+        )
 
     def put(self, data: bytes, mime: str) -> str:
-        key = uuid.uuid4().hex
+        key = f"{self._prefix}{uuid.uuid4().hex}"  # full object key, stored in DB
         self._client.put_object(Bucket=self._bucket_name, Key=key, Body=data, ContentType=mime)
         return key
 
     def get_signed_url(self, storage_key: str, ttl: int = 300) -> str:
+        # CDN serves the object publicly (origin-fronted) → hand back a stable CDN
+        # URL when configured; else a short-lived presigned S3 URL.
+        if self._cdn:
+            return f"https://{self._cdn}/{storage_key}"
         return self._client.generate_presigned_url(
             "get_object",
             Params={"Bucket": self._bucket_name, "Key": storage_key},

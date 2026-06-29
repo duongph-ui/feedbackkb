@@ -65,6 +65,43 @@ def test_get_storage_is_singleton():
     assert adapters.get_storage("local") is adapters.get_storage("local")
 
 
+def test_s3_uses_clevai_env_prefix_and_cdn(monkeypatch):
+    # S3Storage must read the AWS_S3_* env staging/prod already set, prefix object
+    # keys with AWS_S3_PATH_UPLOADING, and hand back a CDN URL when CDN_HOST_NAME
+    # is set (instead of a presigned URL).
+    from feedbackkb_server.adapters import storage as st
+
+    captured = {}
+
+    class FakeClient:
+        def put_object(self, **kw):
+            captured.update(kw)
+
+    def fake_boto3_client(svc, **kw):
+        captured["client_kw"] = kw
+        return FakeClient()
+
+    import types
+    monkeypatch.setitem(
+        __import__("sys").modules, "boto3", types.SimpleNamespace(client=fake_boto3_client)
+    )
+    monkeypatch.setenv("AWS_S3_BUCKET_NAME", "fbk-bucket")
+    monkeypatch.setenv("AWS_S3_ACCESS_ID", "AKIA")
+    monkeypatch.setenv("AWS_S3_ACCESS_KEY", "secret")
+    monkeypatch.setenv("AWS_S3_ENDPOINT", "https://s3.example.com")
+    monkeypatch.setenv("AWS_S3_PATH_UPLOADING", "/feedbackkb/attachments/")
+    monkeypatch.setenv("CDN_HOST_NAME", "cdn.example.com/")
+
+    s = st.S3Storage()
+    key = s.put(b"\x89PNG", "image/png")
+    assert key.startswith("feedbackkb/attachments/")  # prefix normalised, no leading slash
+    assert captured["Bucket"] == "fbk-bucket" and captured["Key"] == key
+    assert captured["client_kw"]["aws_access_key_id"] == "AKIA"
+    assert captured["client_kw"]["endpoint_url"] == "https://s3.example.com"
+    url = s.get_signed_url(key)
+    assert url == f"https://cdn.example.com/{key}"  # CDN url, trailing slash stripped
+
+
 def test_none_auth_is_anonymous():
     ident = adapters.get_auth("none").verify({})
     assert isinstance(ident, Identity)
